@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gvs-api
+  namespace: default
+  labels:
+    app.kubernetes.io/name: gvs-api
+    app.kubernetes.io/part-of: grand-vendorservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gvs-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gvs-api
+    spec:
+      containers:
+      - name: api
+        image: gvs-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: APP_NAME
+          value: "Grand VendorService API"
+        - name: DEBUG
+          value: "false"
+        - name: APP_FULL_BASE_URL
+          value: "https://api.grandvendorservice.com"
+        - name: DB_HOST
+          value: "gvs-mysql"
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_NAME
+          value: "vendorservice"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: db-username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: db-password
+        - name: REDIS_HOST
+          value: "gvs-redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PREFIX
+          value: "gvs:"
+        - name: REDIS_DATABASE
+          value: "0"
+        - name: CACHE_ENGINE
+          value: "redis"
+        - name: SECURITY_SALT
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: security-salt
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

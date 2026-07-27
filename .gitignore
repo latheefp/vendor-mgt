@@ -1,0 +1,29 @@
+# ---- secrets ----------------------------------------------------
+.env
+.env.local
+*.pem
+
+# ---- api (CakePHP) ----------------------------------------------
+/api/vendor/
+/api/config/app_local.php
+/api/logs/*
+!/api/logs/.gitkeep
+/api/tmp/*
+!/api/tmp/.gitkeep
+/api/webroot/uploads/*
+!/api/webroot/uploads/.gitkeep
+/api/.phpunit.cache/
+/api/.phpunit.result.cache
+
+# ---- web (React) ------------------------------------------------
+/web/node_modules/
+/web/dist/
+/web/.vite/
+/web/*.local
+
+# ---- tooling ----------------------------------------------------
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.log

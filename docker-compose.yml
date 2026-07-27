@@ -1,0 +1,221 @@
+####################################################################
+# Grand VendorService — local development stack
+#
+# Request path, with nothing in between:
+#
+#   Browser ──▶ FE (Vite) ──/api──▶ BE (FrankenPHP) ──▶ Redis ──▶ MySQL
+#
+# In development the browser talks to the Vite dev server, which
+# proxies /api straight to the backend. That keeps the API and the
+# client on ONE origin — the property the HttpOnly session-cookie
+# auth model depends on (no JWT in localStorage).
+#
+# In production the same backend image serves the built SPA itself
+# (see api/docker/Caddyfile), so the origin stays single with no
+# reverse proxy at all.
+#
+# FrankenPHP speaks HTTP natively, so there is no nginx and no
+# FastCGI hop.
+#
+#   7007  app          <- open http://localhost:7007
+#   7008  backend      (direct API access, handy for curl)
+#   7002  MySQL
+#   7003  Mailpit web UI
+#   7004  Adminer
+#   7005  Redis
+#   7006  Mailpit SMTP
+####################################################################
+
+name: grand-vendorservice
+
+services:
+  ##################################################################
+  # FE — React SPA on the Vite dev server.
+  #      Also the dev entrypoint: proxies /api to the backend.
+  ##################################################################
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: dev
+    container_name: gvs-web
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${HTTP_PORT:-7007}:5173"
+    environment:
+      NODE_ENV: development
+      IN_DOCKER: "true"
+      # Same origin from the browser's point of view: the SPA calls
+      # /api/* with no host prefix and Vite forwards it.
+      VITE_API_BASE: /api
+      VITE_PROXY_TARGET: http://api:8080
+      VITE_HMR_CLIENT_PORT: "${HTTP_PORT:-7007}"
+    volumes:
+      - ./web:/app
+      - web-node-modules:/app/node_modules
+    networks: [gvs]
+
+  ##################################################################
+  # BE — CakePHP 5 on FrankenPHP (HTTP, no nginx, no php-fpm)
+  ##################################################################
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      target: dev
+    container_name: gvs-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      # Not needed by the SPA — exposed so you can curl the API
+      # directly without going through Vite.
+      - "${API_PORT:-7008}:8080"
+    environment:
+      APP_NAME: "Grand VendorService"
+      DEBUG: "${DEBUG:-true}"
+      APP_ENCODING: UTF-8
+      APP_DEFAULT_LOCALE: en_IN
+      APP_DEFAULT_TIMEZONE: Asia/Kolkata
+      APP_FULL_BASE_URL: "${APP_FULL_BASE_URL:-http://localhost:7007}"
+      SECURITY_SALT: "${SECURITY_SALT:-dev-only-salt-change-me-in-production-0123456789abcdef}"
+
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: "${DB_NAME:-vendorservice}"
+      DB_USERNAME: "${DB_USERNAME:-vendorservice}"
+      DB_PASSWORD: "${DB_PASSWORD:-secret}"
+      TEST_DB_NAME: "${TEST_DB_NAME:-vendorservice_test}"
+
+      # Redis sits between the app and MySQL: sessions, model metadata
+      # and resolved rate cards are served from here first.
+      #
+      # The instance is SHARED with other applications, so every key is
+      # namespaced AND we sit on our own database index. Prefix alone is
+      # not enough — a neighbouring FLUSHDB would still wipe sessions and
+      # sign out every technician mid-job.
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_PREFIX: "${REDIS_PREFIX:-gvs:}"
+      REDIS_DATABASE: "${REDIS_DATABASE:-0}"
+      CACHE_ENGINE: "${CACHE_ENGINE:-redis}"
+
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+      EMAIL_USERNAME: ""
+      EMAIL_PASSWORD: ""
+      EMAIL_TLS: "false"
+      EMAIL_FROM: "service@grandvendorservice.local"
+
+      # Evidence photo storage (S3 compatible — Cloudflare R2 in prod)
+      S3_ENDPOINT: "${S3_ENDPOINT:-}"
+      S3_BUCKET: "${S3_BUCKET:-gvs-evidence}"
+      S3_KEY: "${S3_KEY:-}"
+      S3_SECRET: "${S3_SECRET:-}"
+      S3_REGION: "${S3_REGION:-auto}"
+    volumes:
+      - ./api:/app
+      - ./api/docker/Caddyfile:/etc/frankenphp/Caddyfile:ro
+      - api-tmp:/app/tmp
+      - api-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    networks: [gvs]
+
+  ##################################################################
+  # Redis — cache, sessions and (later) the queue
+  ##################################################################
+  redis:
+    image: redis:7-alpine
+    container_name: gvs-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_EXPOSED_PORT:-7005}:6379"
+    volumes:
+      - redis-data:/data
+    networks: [gvs]
+
+  ##################################################################
+  # MySQL 8.4 — the system of record
+  ##################################################################
+  mysql:
+    image: mysql:8.4
+    container_name: gvs-mysql
+    restart: unless-stopped
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-time-zone=+05:30
+      --sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-rootsecret}"
+      MYSQL_DATABASE: "${DB_NAME:-vendorservice}"
+      MYSQL_USER: "${DB_USERNAME:-vendorservice}"
+      MYSQL_PASSWORD: "${DB_PASSWORD:-secret}"
+    ports:
+      - "${DB_EXPOSED_PORT:-7002}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD:-rootsecret}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [gvs]
+
+  ##################################################################
+  # Dev tooling — not in the request path.
+  #
+  # Mailpit earns its place: clause 11 makes email the only
+  # contractually valid channel, so we need to see and assert on every
+  # notice the system sends.
+  ##################################################################
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: gvs-mailpit
+    profiles: ["tools"]
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "${MAILPIT_UI_PORT:-7003}:8025"
+      - "${MAILPIT_SMTP_PORT:-7006}:1025"
+    networks: [gvs]
+
+  adminer:
+    image: adminer:5
+    container_name: gvs-adminer
+    profiles: ["tools"]
+    restart: unless-stopped
+    depends_on: [mysql]
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+      ADMINER_DESIGN: dracula
+    ports:
+      - "${ADMINER_PORT:-7004}:8080"
+    networks: [gvs]
+
+networks:
+  gvs:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  api-tmp:
+  api-logs:
+  web-node-modules:

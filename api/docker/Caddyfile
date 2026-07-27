@@ -1,0 +1,93 @@
+####################################################################
+# FrankenPHP / Caddy configuration.
+#
+# This single server replaces what used to be Traefik + nginx +
+# php-fpm. It speaks HTTP directly, so there is no FastCGI hop and
+# no separate reverse proxy in the request path.
+#
+# In production it also serves the built React SPA, which is what
+# keeps the API and the client on ONE origin — the property the
+# whole session-cookie auth model depends on.
+####################################################################
+
+{
+	frankenphp
+
+	# TLS terminates at the ingress/load balancer, not here.
+	auto_https off
+
+	# Caddy's own admin API is not needed inside the container.
+	admin off
+
+	log {
+		output stdout
+		format console
+		level {$CADDY_LOG_LEVEL:INFO}
+	}
+}
+
+:8080 {
+	log
+
+	# Never advertise what we are running.
+	header -Server
+	header -X-Powered-By
+
+	# Baseline hardening. HSTS is intentionally absent: it belongs at
+	# the edge that actually terminates TLS.
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	# Liveness that never touches PHP or the database, so a probe
+	# cannot be fooled by an app that boots but cannot serve.
+	handle /healthz {
+		respond "pong" 200
+	}
+
+	encode zstd gzip
+
+	####################################################################
+	# The API.
+	#
+	# Cake's routes are declared inside a scope('/api'), so the path
+	# arrives intact and no rewriting happens anywhere.
+	####################################################################
+	@api path /api/*
+	handle @api {
+		root * /app/webroot
+		php_server {
+			# Only index.php may execute; nothing else under webroot
+			# should ever be treated as PHP.
+			index index.php
+		}
+	}
+
+	# Evidence photos and other uploads in local-disk mode. In
+	# production these live in object storage and this never fires.
+	handle /uploads/* {
+		root * /app/webroot
+		file_server
+	}
+
+	####################################################################
+	# The SPA.
+	#
+	# Present only in the production image. In development this path is
+	# never reached, because the browser talks to the Vite dev server
+	# and Vite proxies /api here.
+	####################################################################
+	handle {
+		root * /app/public
+
+		# Hashed build assets are immutable and safe to cache hard.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+
+		# Everything else is a client-side route.
+		try_files {path} /index.html
+		file_server
+	}
+}
