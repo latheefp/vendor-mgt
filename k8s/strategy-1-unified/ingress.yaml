@@ -2,16 +2,15 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: gvs-app-ingress
-  namespace: default
+  namespace: egrand
+  labels:
+    app.kubernetes.io/name: gvs-app
   annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/proxy-body-size: "32m"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Cloudflare / Reverse Proxy real IP handling
-    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: egrand-real-ip@kubernetescrd
 spec:
+  ingressClassName: traefik
   rules:
-  - host: app.grandvendorservice.com
+  - host: vendor-mgt.egrand.in
     http:
       paths:
       - path: /

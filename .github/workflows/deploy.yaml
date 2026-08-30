@@ -1,0 +1,38 @@
+name: Build, push and deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    name: Build, push and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and push Docker image
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+          IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+        run: |
+          docker build . -t "$IMAGE_NAME:latest" -t "$IMAGE_NAME:${{ github.sha }}"
+          echo "$DOCKERHUB_PASSWORD" | base64 -d | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          docker push "$IMAGE_NAME:latest"
+          docker push "$IMAGE_NAME:${{ github.sha }}"
+
+      - name: Deploy to Kubernetes
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          K8S_DEPLOYMENT: ${{ vars.K8S_DEPLOYMENT }}
+          IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+        run: |
+          echo "$KUBE_CONFIG_DATA" | base64 -d > kubeconfig.yaml
+          export KUBECONFIG=$PWD/kubeconfig.yaml
+          kubectl -n "$K8S_NAMESPACE" set image "deployment/$K8S_DEPLOYMENT" "app=$IMAGE_NAME:${{ github.sha }}"
+          kubectl -n "$K8S_NAMESPACE" rollout status "deployment/$K8S_DEPLOYMENT"

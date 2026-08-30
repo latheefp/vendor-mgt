@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gvs-app
-  namespace: default
+  namespace: egrand
   labels:
     app.kubernetes.io/name: gvs-app
     app.kubernetes.io/part-of: grand-vendorservice
@@ -18,50 +18,118 @@ spec:
     spec:
       containers:
       - name: app
-        image: gvs-app:latest
-        imagePullPolicy: IfNotPresent
+        image: latheefp/gvs-app:latest
+        imagePullPolicy: Always
         ports:
         - name: http
           containerPort: 8080
           protocol: TCP
         env:
+        # ---- non-sensitive app config ----
         - name: APP_NAME
           value: "Grand VendorService"
         - name: DEBUG
           value: "false"
+        - name: APP_ENCODING
+          value: "UTF-8"
+        - name: APP_DEFAULT_LOCALE
+          value: "en_IN"
+        - name: APP_DEFAULT_TIMEZONE
+          value: "Asia/Kolkata"
         - name: APP_FULL_BASE_URL
-          value: "https://app.grandvendorservice.com"
-        - name: DB_HOST
-          value: "gvs-mysql"
+          value: "https://vendor-mgt.egrand.in"
         - name: DB_PORT
           value: "3306"
         - name: DB_NAME
-          value: "vendorservice"
+          value: "vendormgt"
+        - name: CACHE_ENGINE
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        # Distinct prefix/index so this app doesn't collide with other
+        # apps on the same shared Redis instance.
+        - name: REDIS_PREFIX
+          value: "vendormgt:"
+        - name: REDIS_DATABASE
+          value: "1"
+        - name: S3_BUCKET
+          value: "gvs-evidence"
+        - name: S3_REGION
+          value: "auto"
+        - name: EMAIL_PORT
+          value: "587"
+        - name: EMAIL_TLS
+          value: "true"
+        - name: EMAIL_FROM
+          value: "service@vendor-mgt.egrand.in"
+        # ---- sensitive values, from the gvs-secrets Secret ----
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: DB_HOST
         - name: DB_USERNAME
           valueFrom:
             secretKeyRef:
               name: gvs-secrets
-              key: db-username
+              key: DB_USERNAME
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
               name: gvs-secrets
-              key: db-password
+              key: DB_PASSWORD
         - name: REDIS_HOST
-          value: "gvs-redis"
-        - name: REDIS_PORT
-          value: "6379"
-        - name: REDIS_PREFIX
-          value: "gvs:"
-        - name: REDIS_DATABASE
-          value: "0"
-        - name: CACHE_ENGINE
-          value: "redis"
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: REDIS_HOST
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: REDIS_PASSWORD
+              optional: true
         - name: SECURITY_SALT
           valueFrom:
             secretKeyRef:
               name: gvs-secrets
-              key: security-salt
+              key: SECURITY_SALT
+        - name: S3_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: S3_ENDPOINT
+              optional: true
+        - name: S3_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: S3_KEY
+              optional: true
+        - name: S3_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: S3_SECRET
+              optional: true
+        - name: EMAIL_HOST
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: EMAIL_HOST
+              optional: true
+        - name: EMAIL_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: EMAIL_USERNAME
+              optional: true
+        - name: EMAIL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gvs-secrets
+              key: EMAIL_PASSWORD
+              optional: true
         livenessProbe:
           httpGet:
             path: /healthz
