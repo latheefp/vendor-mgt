@@ -16,6 +16,11 @@ spec:
       labels:
         app.kubernetes.io/name: gvs-app
     spec:
+      volumes:
+      - name: uploads
+        nfs:
+          server: 104.225.216.43
+          path: /apps/share/vendormgt
       containers:
       - name: app
         image: latheefp/gvs-app:latest
@@ -24,6 +29,9 @@ spec:
         - name: http
           containerPort: 8080
           protocol: TCP
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/webroot/uploads
         env:
         # ---- non-sensitive app config ----
         - name: APP_NAME
