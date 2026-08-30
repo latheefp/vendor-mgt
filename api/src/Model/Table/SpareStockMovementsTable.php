@@ -30,7 +30,7 @@ class SpareStockMovementsTable extends Table
      *
      * @var list<string>
      */
-    private const ZERO_QUANTITY_TYPES = ['sent_to_vendor', 'adjustment'];
+    private const ZERO_QUANTITY_TYPES = ['sent_to_company', 'adjustment'];
 
     public function initialize(array $config): void
     {
@@ -66,7 +66,7 @@ class SpareStockMovementsTable extends Table
             ->scalar('movement_type')
             ->inList('movement_type', [
                 'received', 'issued', 'consumed', 'returned_good',
-                'returned_defective', 'sent_to_vendor', 'written_off', 'adjustment',
+                'returned_defective', 'sent_to_company', 'written_off', 'adjustment',
             ])
             ->notEmptyString('movement_type');
 

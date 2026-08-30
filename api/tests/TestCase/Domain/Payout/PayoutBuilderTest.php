@@ -43,7 +43,7 @@ final class PayoutBuilderTest extends TestCase
         $this->received = new DateTimeImmutable('2026-07-01 09:00:00');
     }
 
-    private function vendorSide(
+    private function companySide(
         string $jobType,
         WarrantyScope $scope,
         ?float $sizeInch,
@@ -79,13 +79,13 @@ final class PayoutBuilderTest extends TestCase
     /**
      * A flat-rate contractor on a 32" installation closed inside 24h.
      *
-     * We bill the vendor Rs.400 (Rs.350 + Rs.50 incentive).
+     * We bill the company Rs.400 (Rs.350 + Rs.50 incentive).
      * We pay the technician Rs.200 flat + their full Rs.50 incentive share.
      * Margin: Rs.150.
      */
     public function testFlatRateContractorWithFullBonusShare(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_INSTALLATION,
             WarrantyScope::NotApplicable,
             32,
@@ -99,10 +99,10 @@ final class PayoutBuilderTest extends TestCase
             bonusSharePct: '100.00',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_INSTALLATION);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_INSTALLATION);
+        $complete = $companySide->withLines($lines);
 
-        $this->assertSame(40_000, $complete->vendorReceivable()->paise);
+        $this->assertSame(40_000, $complete->companyReceivable()->paise);
         $this->assertSame(25_000, $complete->technicianPayable()->paise);
         $this->assertSame(15_000, $complete->grossMargin()->paise);
         $this->assertSame('₹150.00', $complete->grossMargin()->format());
@@ -114,7 +114,7 @@ final class PayoutBuilderTest extends TestCase
      */
     public function testWithholdingTheBonusShareShiftsItToMargin(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_INSTALLATION,
             WarrantyScope::NotApplicable,
             32,
@@ -128,8 +128,8 @@ final class PayoutBuilderTest extends TestCase
             bonusSharePct: '0.00',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_INSTALLATION);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_INSTALLATION);
+        $complete = $companySide->withLines($lines);
 
         $this->assertCount(0, $complete->ofType(ChargeLineType::TechnicianBonusShare));
         $this->assertSame(20_000, $complete->technicianPayable()->paise);
@@ -145,7 +145,7 @@ final class PayoutBuilderTest extends TestCase
      */
     public function testPercentageTechnicianIsPaidOnServiceChargeOnly(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_SERVICE,
             WarrantyScope::InWarranty,
             55,
@@ -155,13 +155,13 @@ final class PayoutBuilderTest extends TestCase
 
         $rate = new TechnicianRateData(
             id: 3,
-            model: PayoutModel::PctOfVendor,
-            pctOfVendor: '40.00',
+            model: PayoutModel::PctOfCompany,
+            pctOfCompany: '40.00',
             bonusSharePct: '50.00',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_SERVICE, travelKm: 42.0);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_SERVICE, travelKm: 42.0);
+        $complete = $companySide->withLines($lines);
 
         $base = $complete->ofType(ChargeLineType::TechnicianPayout)[0];
         $this->assertSame(20_000, $base->amount->paise, '40% of Rs.500, not of Rs.656');
@@ -170,7 +170,7 @@ final class PayoutBuilderTest extends TestCase
         $this->assertSame(3_750, $share->amount->paise, '50% of Rs.75');
 
         // Rs.656 in, Rs.237.50 out.
-        $this->assertSame(65_600, $complete->vendorReceivable()->paise);
+        $this->assertSame(65_600, $complete->companyReceivable()->paise);
         $this->assertSame(23_750, $complete->technicianPayable()->paise);
         $this->assertSame(41_850, $complete->grossMargin()->paise);
     }
@@ -181,7 +181,7 @@ final class PayoutBuilderTest extends TestCase
      */
     public function testSalariedTechnicianEarnsIncentivesButNoJobBase(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_SERVICE,
             WarrantyScope::InWarranty,
             32,
@@ -195,8 +195,8 @@ final class PayoutBuilderTest extends TestCase
             bonusSharePct: '100.00',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_SERVICE);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_SERVICE);
+        $complete = $companySide->withLines($lines);
 
         $this->assertCount(0, $complete->ofType(ChargeLineType::TechnicianPayout));
         $this->assertSame(7_500, $complete->technicianPayable()->paise, 'The Rs.75 incentive only');
@@ -212,7 +212,7 @@ final class PayoutBuilderTest extends TestCase
      */
     public function testFullPenaltyRecoveryProtectsTheMargin(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_INSTALLATION,
             WarrantyScope::NotApplicable,
             32,
@@ -226,14 +226,14 @@ final class PayoutBuilderTest extends TestCase
             penaltyRecoveryPct: '100.00',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_INSTALLATION);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_INSTALLATION);
+        $complete = $companySide->withLines($lines);
 
         $recovery = $complete->ofType(ChargeLineType::TechnicianPenaltyRecovery)[0];
         $this->assertSame(-5_000, $recovery->amount->paise, 'Reduces what we owe them');
         $this->assertSame(Ledger::TechnicianPayable, $recovery->ledger);
 
-        $this->assertSame(30_000, $complete->vendorReceivable()->paise);
+        $this->assertSame(30_000, $complete->companyReceivable()->paise);
         $this->assertSame(15_000, $complete->technicianPayable()->paise);
         $this->assertSame(15_000, $complete->grossMargin()->paise, 'Margin protected');
     }
@@ -244,7 +244,7 @@ final class PayoutBuilderTest extends TestCase
      */
     public function testWithoutRecoveryTheDelayCostsUsTheMargin(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_INSTALLATION,
             WarrantyScope::NotApplicable,
             32,
@@ -258,8 +258,8 @@ final class PayoutBuilderTest extends TestCase
             penaltyRecoveryPct: '0.00',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_INSTALLATION);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_INSTALLATION);
+        $complete = $companySide->withLines($lines);
 
         $this->assertCount(0, $complete->ofType(ChargeLineType::TechnicianPenaltyRecovery));
         $this->assertSame(20_000, $complete->technicianPayable()->paise);
@@ -268,16 +268,16 @@ final class PayoutBuilderTest extends TestCase
 
     /**
      * The technician's travel allowance is a separate rate from the
-     * vendor's reimbursement, and the spread between the two is ours.
+     * company's reimbursement, and the spread between the two is ours.
      *
-     * Vendor pays Rs.3/km beyond 15km; we pay the technician Rs.2/km from
+     * Company pays Rs.3/km beyond 15km; we pay the technician Rs.2/km from
      * the first kilometre. On a 42km job: Rs.81 in, Rs.84 out — which on
      * this leg is a small loss, and precisely the sort of thing you only
      * notice if the two rates are modelled separately.
      */
-    public function testTechnicianTravelIsRatedIndependentlyOfTheVendor(): void
+    public function testTechnicianTravelIsRatedIndependentlyOfTheCompany(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_SERVICE,
             WarrantyScope::InWarranty,
             55,
@@ -294,8 +294,8 @@ final class PayoutBuilderTest extends TestCase
             bonusSharePct: '100.00',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_SERVICE, travelKm: 42.0);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_SERVICE, travelKm: 42.0);
+        $complete = $companySide->withLines($lines);
 
         $technicianTravel = array_values(array_filter(
             $complete->ofType(ChargeLineType::Travel),
@@ -317,7 +317,7 @@ final class PayoutBuilderTest extends TestCase
      */
     public function testRateScopedToJobTypesDoesNotPayOnOthers(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_SERVICE,
             WarrantyScope::InWarranty,
             32,
@@ -331,7 +331,7 @@ final class PayoutBuilderTest extends TestCase
             appliesToJobTypes: [DianoraRateCard::JOB_PANEL],
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_SERVICE);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_SERVICE);
 
         $this->assertSame([], $lines);
     }
@@ -340,13 +340,13 @@ final class PayoutBuilderTest extends TestCase
      * The full out-of-warranty picture across all four ledgers.
      *
      *   Rs.1500 collected from the customer
-     * - Rs.150  royalty owed back to the vendor
+     * - Rs.150  royalty owed back to the company
      * - Rs.500  technician payout
      * = Rs.850  margin
      */
     public function testOutOfWarrantyJobNetsAcrossAllFourLedgers(): void
     {
-        $vendorSide = $this->vendorSide(
+        $companySide = $this->companySide(
             DianoraRateCard::JOB_SERVICE,
             WarrantyScope::OutOfWarranty,
             70,
@@ -355,17 +355,17 @@ final class PayoutBuilderTest extends TestCase
 
         $rate = new TechnicianRateData(
             id: 9,
-            model: PayoutModel::PctOfVendor,
-            pctOfVendor: '33.33',
+            model: PayoutModel::PctOfCompany,
+            pctOfCompany: '33.33',
         );
 
-        $lines = $this->payouts->build($vendorSide, $rate, DianoraRateCard::JOB_SERVICE);
-        $complete = $vendorSide->withLines($lines);
+        $lines = $this->payouts->build($companySide, $rate, DianoraRateCard::JOB_SERVICE);
+        $complete = $companySide->withLines($lines);
 
         $this->assertSame(150_000, $complete->customerCollection()->paise);
-        $this->assertSame(15_000, $complete->vendorPayable()->paise);
+        $this->assertSame(15_000, $complete->companyPayable()->paise);
         $this->assertSame(49_995, $complete->technicianPayable()->paise, '33.33% of Rs.1500');
-        $this->assertTrue($complete->vendorReceivable()->isZero());
+        $this->assertTrue($complete->companyReceivable()->isZero());
         $this->assertSame(85_005, $complete->grossMargin()->paise);
 
         $summary = $complete->summary();

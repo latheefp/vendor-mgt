@@ -67,9 +67,9 @@ final readonly class ChargeSet
     }
 
     /** Net of any SLA deduction, since penalties sit on this ledger as negatives. */
-    public function vendorReceivable(): Money
+    public function companyReceivable(): Money
     {
-        return $this->totalFor(Ledger::VendorReceivable);
+        return $this->totalFor(Ledger::CompanyReceivable);
     }
 
     /** Cash the technician must collect at the door and later bank. */
@@ -78,10 +78,10 @@ final readonly class ChargeSet
         return $this->totalFor(Ledger::CustomerCollection);
     }
 
-    /** What we owe the vendor back — the out-of-warranty royalty. */
-    public function vendorPayable(): Money
+    /** What we owe the company back — the out-of-warranty royalty. */
+    public function companyPayable(): Money
     {
-        return $this->totalFor(Ledger::VendorPayable);
+        return $this->totalFor(Ledger::CompanyPayable);
     }
 
     public function technicianPayable(): Money
@@ -94,9 +94,9 @@ final readonly class ChargeSet
      */
     public function grossMargin(): Money
     {
-        return $this->vendorReceivable()
+        return $this->companyReceivable()
             ->plus($this->customerCollection())
-            ->minus($this->vendorPayable())
+            ->minus($this->companyPayable())
             ->minus($this->technicianPayable());
     }
 
@@ -116,9 +116,9 @@ final readonly class ChargeSet
     public function summary(): array
     {
         return [
-            'vendor_receivable' => $this->vendorReceivable()->jsonSerialize(),
+            'company_receivable' => $this->companyReceivable()->jsonSerialize(),
             'customer_collection' => $this->customerCollection()->jsonSerialize(),
-            'vendor_payable' => $this->vendorPayable()->jsonSerialize(),
+            'company_payable' => $this->companyPayable()->jsonSerialize(),
             'technician_payable' => $this->technicianPayable()->jsonSerialize(),
             'gross_margin' => $this->grossMargin()->jsonSerialize(),
             'line_count' => $this->count(),

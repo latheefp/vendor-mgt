@@ -11,7 +11,7 @@ use Cake\Validation\Validator;
 /**
  * SpareParts Model
  *
- * @property \App\Model\Table\VendorsTable&\Cake\ORM\Association\BelongsTo $Vendors
+ * @property \App\Model\Table\CompaniesTable&\Cake\ORM\Association\BelongsTo $Companies
  * @property \App\Model\Table\ProductCategoriesTable&\Cake\ORM\Association\BelongsTo $ProductCategories
  * @property \App\Model\Table\TicketSparesTable&\Cake\ORM\Association\HasMany $TicketSpares
  *
@@ -49,8 +49,8 @@ class SparePartsTable extends Table
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             'joinType' => 'INNER',
         ]);
         $this->belongsTo('ProductCategories', [
@@ -70,7 +70,7 @@ class SparePartsTable extends Table
     public function validationDefault(Validator $validator): Validator
     {
         $validator
-            ->notEmptyString('vendor_id');
+            ->notEmptyString('company_id');
 
         $validator
             ->allowEmptyString('product_category_id');
@@ -121,8 +121,8 @@ class SparePartsTable extends Table
      */
     public function buildRules(RulesChecker $rules): RulesChecker
     {
-        $rules->add($rules->isUnique(['vendor_id', 'part_no']), ['errorField' => 'vendor_id', 'message' => __('This combination of vendor_id and part_no already exists')]);
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
+        $rules->add($rules->isUnique(['company_id', 'part_no']), ['errorField' => 'company_id', 'message' => __('This combination of company_id and part_no already exists')]);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
         $rules->add($rules->existsIn(['product_category_id'], 'ProductCategories'), ['errorField' => 'product_category_id']);
 
         return $rules;

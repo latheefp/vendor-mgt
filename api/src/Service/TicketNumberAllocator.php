@@ -35,15 +35,15 @@ class TicketNumberAllocator
      *
      * @param string|null $period  reset bucket; defaults to the current month
      */
-    public function next(int $vendorId, ?string $period = null): string
+    public function next(int $companyId, ?string $period = null): string
     {
         $period ??= date('Ym');
 
-        $settings = $this->config->settings($vendorId);
+        $settings = $this->config->settings($companyId);
         $prefix = $settings->string(SettingCatalog::TICKET_PREFIX, 'TKT');
         $width = max(3, min(10, $settings->int(SettingCatalog::TICKET_SEQUENCE_WIDTH, 6)));
 
-        $sequence = $this->increment($vendorId, $period);
+        $sequence = $this->increment($companyId, $period);
 
         return sprintf('%s-%s-%0' . $width . 'd', $prefix, $period, $sequence);
     }
@@ -61,31 +61,25 @@ class TicketNumberAllocator
      * reserved word (it is a window function); unquoted, the whole
      * statement is a syntax error.
      */
-    private function increment(int $vendorId, string $period): int
+    private function increment(int $companyId, string $period): int
     {
         $connection = $this->fetchTable('TicketSequences')->getConnection();
         $now = date('Y-m-d H:i:s');
 
-        $statement = $connection->execute(
-            'INSERT INTO ticket_sequences (vendor_id, period, `last_value`, created, modified)
-                 VALUES (:vendor_id, :period, 1, :now, :now)
+        $connection->execute(
+            'INSERT INTO ticket_sequences (company_id, period, `last_value`, created, modified)
+                 VALUES (:company_id, :period, 1, :now, :now)
              ON DUPLICATE KEY UPDATE
-                 `last_value` = LAST_INSERT_ID(`last_value` + 1),
+                 `last_value` = `last_value` + 1,
                  modified = :now',
-            ['vendor_id' => $vendorId, 'period' => $period, 'now' => $now],
+            ['company_id' => $companyId, 'period' => $period, 'now' => $now],
         );
 
-        // MySQL reports 1 affected row when the INSERT ran and 2 when the
-        // ON DUPLICATE KEY UPDATE branch did. Read from the statement, not
-        // from a later ROW_COUNT() — that would report on the SELECT.
-        if ($statement->rowCount() === 1) {
-            // Fresh row. LAST_INSERT_ID() holds this row's auto-increment
-            // id, which is not the counter, so do not read it back.
-            return 1;
-        }
+        $row = $connection->execute(
+            'SELECT `last_value` FROM ticket_sequences WHERE company_id = :company_id AND period = :period',
+            ['company_id' => $companyId, 'period' => $period],
+        )->fetch('assoc');
 
-        $row = $connection->execute('SELECT LAST_INSERT_ID() AS value')->fetch('assoc');
-
-        return (int)($row['value'] ?? 1);
+        return (int)($row['last_value'] ?? 1);
     }
 }

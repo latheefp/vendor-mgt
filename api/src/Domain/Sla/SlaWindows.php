@@ -4,11 +4,11 @@ declare(strict_types=1);
 namespace App\Domain\Sla;
 
 /**
- * The SLA windows from a vendor agreement, in hours.
+ * The SLA windows from a company agreement, in hours.
  *
  * Defaults are the Dianora terms — contact within 2h (clause 1), engineer
  * on site within 48h (clause 2), job closed within 48h (clause 3) — but
- * they are only defaults. Every vendor gets their own row, which is the
+ * they are only defaults. Every company gets their own row, which is the
  * whole reason these live in the database instead of in this file.
  */
 final readonly class SlaWindows

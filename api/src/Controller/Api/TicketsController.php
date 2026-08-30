@@ -36,10 +36,10 @@ class TicketsController extends ApiController
         parent::beforeFilter($event);
 
         $this->Authentication->allowUnauthenticated([
-            'index', 'options', 'view', 'add', 'assign', 'contact',
+            'index', 'options', 'view', 'add', 'edit', 'assign', 'contact',
             'checkin', 'checkout', 'sendOtp', 'verifyOtp', 'addAttachment',
-            'addSpare', 'returnSpare', 'hold', 'release', 'close', 'preview',
-            'charges', 'comments', 'addComment',
+            'addSpare', 'removeSpare', 'returnSpare', 'hold', 'release', 'close', 'preview',
+            'charges', 'addAdjustment', 'removeCharge', 'comments', 'addComment',
             'statusOptions', 'changeStatus',
             'attachments', 'serveAttachment', 'dashboardStats',
         ]);
@@ -58,20 +58,26 @@ class TicketsController extends ApiController
             ->disableHydration()
             ->all();
 
-        $byStatus = [
-            'received' => 0,
-            'assigned' => 0,
-            'in_progress' => 0,
-            'on_hold' => 0,
-            'closed' => 0,
-            'cancelled' => 0,
-        ];
+        // Seeded from the lifecycle itself rather than a hand-written list,
+        // which had drifted: it carried a "received" status that does not
+        // exist and omitted half the ones that do, so those columns read
+        // zero however many tickets were sitting in them.
+        $byStatus = array_fill_keys(
+            array_merge(...array_values(TicketWorkflow::STATUS_BUCKETS)),
+            0,
+        );
         foreach ($statusCountsRaw as $row) {
             $byStatus[(string)$row['status']] = (int)$row['count'];
         }
 
         $totalTickets = array_sum($byStatus);
-        $openTickets = $totalTickets - ($byStatus['closed'] + $byStatus['cancelled']);
+
+        // Every terminal status, not just closed and cancelled — a rejected
+        // job was being counted as open, which overstated the board.
+        $openTickets = $totalTickets - array_sum(array_intersect_key(
+            $byStatus,
+            array_flip(TicketWorkflow::TERMINAL_STATUSES),
+        ));
         $unassignedTickets = $ticketsTable->find()->where(['assigned_technician_id IS' => null, 'status !=' => 'closed'])->count();
 
         $todayStr = date('Y-m-d');
@@ -79,21 +85,55 @@ class TicketsController extends ApiController
             ->where(['status' => 'closed', 'closed_at >=' => $todayStr . ' 00:00:00'])
             ->count();
 
-        $vendorCountsRaw = $ticketsTable->find()
-            ->select(['vendor_id', 'vendor_name' => 'Vendors.name', 'count' => 'COUNT(*)'])
-            ->join(['Vendors' => ['table' => 'vendors', 'type' => 'INNER', 'conditions' => 'Vendors.id = Tickets.vendor_id']])
-            ->groupBy(['vendor_id', 'Vendors.name'])
+        // Grouped by status as well as company, in one pass. A total per
+        // company answers "who sends us work"; the split answers "who is
+        // waiting on us", which is the one that changes what the desk does
+        // this morning.
+        $companyCountsRaw = $ticketsTable->find()
+            ->select([
+                'company_id',
+                'company_name' => 'Companies.name',
+                'company_code' => 'Companies.code',
+                'status',
+                'count' => 'COUNT(*)',
+            ])
+            ->join(['Companies' => ['table' => 'companies', 'type' => 'INNER', 'conditions' => 'Companies.id = Tickets.company_id']])
+            ->groupBy(['company_id', 'Companies.name', 'Companies.code', 'status'])
             ->disableHydration()
             ->all();
 
-        $byVendor = [];
-        foreach ($vendorCountsRaw as $row) {
-            $byVendor[] = [
-                'vendor_id' => (int)$row['vendor_id'],
-                'vendor_name' => (string)$row['vendor_name'],
-                'count' => (int)$row['count'],
-            ];
+        $emptyBuckets = array_fill_keys(array_keys(TicketWorkflow::STATUS_BUCKETS), 0);
+        $byCompany = [];
+
+        foreach ($companyCountsRaw as $row) {
+            $companyId = (int)$row['company_id'];
+            $count = (int)$row['count'];
+
+            $byCompany[$companyId] ??= [
+                'company_id' => $companyId,
+                'company_name' => (string)$row['company_name'],
+                'company_code' => (string)$row['company_code'],
+                'count' => 0,
+                'open' => 0,
+            ] + $emptyBuckets;
+
+            $byCompany[$companyId][TicketWorkflow::statusBucket((string)$row['status'])] += $count;
+            $byCompany[$companyId]['count'] += $count;
         }
+
+        foreach ($byCompany as &$company) {
+            // What still owes work — the figure the board is actually run
+            // on. Derived rather than counted separately so it can never
+            // disagree with the columns printed beside it.
+            $company['open'] = $company['count'] - $company['closed'] - $company['cancelled'];
+        }
+        unset($company);
+
+        // Busiest first: the company with the most open work is the one the
+        // desk needs at the top, not whichever was onboarded first.
+        $byCompany = array_values($byCompany);
+        usort($byCompany, static fn (array $a, array $b): int => $b['open'] <=> $a['open']
+            ?: $b['count'] <=> $a['count']);
 
         $pendingSpares = $this->fetchTable('TicketSpares')->find()
             ->where(['is_defective_return' => true, 'defective_returned_at IS' => null])
@@ -114,7 +154,7 @@ class TicketsController extends ApiController
             'closed_today' => $closedToday,
             'pending_spares' => $pendingSpares,
             'by_status' => $byStatus,
-            'by_vendor' => $byVendor,
+            'by_company' => $byCompany,
             'recent_events' => $recentEvents,
         ]);
     }
@@ -126,7 +166,7 @@ class TicketsController extends ApiController
     {
         $query = $this->fetchTable('Tickets')->find()
             ->contain([
-                'Customers', 'Vendors', 'ServiceCenters', 'JobTypes',
+                'Customers', 'Companies', 'ServiceCenters', 'JobTypes',
                 'AssignedTechnicians', 'Brands', 'ProductCategories',
             ]);
 
@@ -134,7 +174,7 @@ class TicketsController extends ApiController
         if ($search !== '') {
             $query->where(['OR' => [
                 'Tickets.ticket_no LIKE' => '%' . $search . '%',
-                'Tickets.vendor_ticket_ref LIKE' => '%' . $search . '%',
+                'Tickets.company_ticket_ref LIKE' => '%' . $search . '%',
                 'Customers.name LIKE' => '%' . $search . '%',
                 'Customers.phone LIKE' => '%' . $search . '%',
                 'Tickets.model_no LIKE' => '%' . $search . '%',
@@ -157,7 +197,7 @@ class TicketsController extends ApiController
 
         foreach ([
             'priority' => 'Tickets.priority',
-            'vendor_id' => 'Tickets.vendor_id',
+            'company_id' => 'Tickets.company_id',
             'technician_id' => 'Tickets.assigned_technician_id',
             'service_center_id' => 'Tickets.service_center_id',
         ] as $param => $column) {
@@ -192,7 +232,7 @@ class TicketsController extends ApiController
      *
      * The dropdowns for the intake form.
      *
-     * Pass `vendor_id` and the master lists come back as that company sees
+     * Pass `company_id` and the master lists come back as that company sees
      * them — its own entries shadowing the shared baseline. Without it the
      * shared baseline alone is returned, which is right for a form where
      * the company has not been picked yet and wrong for anything else: an
@@ -201,9 +241,9 @@ class TicketsController extends ApiController
      */
     public function options(): Response
     {
-        $vendorId = (int)$this->request->getQuery('vendor_id', 0);
+        $companyId = (int)$this->request->getQuery('company_id', 0);
 
-        $vendors = $this->fetchTable('Vendors')->find()
+        $companies = $this->fetchTable('Companies')->find()
             ->select(['id', 'code', 'name'])
             ->where(['is_active' => true])
             ->orderBy(['name' => 'ASC'])
@@ -216,8 +256,8 @@ class TicketsController extends ApiController
             ->all();
 
         $brands = $this->fetchTable('Brands')->find()
-            ->select(['id', 'code', 'name', 'vendor_id'])
-            ->where($vendorId > 0 ? ['vendor_id' => $vendorId] : [])
+            ->select(['id', 'code', 'name', 'company_id'])
+            ->where($companyId > 0 ? ['company_id' => $companyId] : [])
             ->orderBy(['name' => 'ASC'])
             ->all();
 
@@ -234,10 +274,10 @@ class TicketsController extends ApiController
             ->all();
 
         $config = new CompanyConfigRepository();
-        $lists = $config->masterLists($vendorId);
+        $lists = $config->masterLists($companyId);
 
         return $this->respond([
-            'vendors' => $vendors,
+            'companies' => $companies,
             'service_centers' => $serviceCenters,
             'brands' => $brands,
             'districts' => $districts,
@@ -261,8 +301,11 @@ class TicketsController extends ApiController
             ],
             // What this company demands at intake and at closure, so the
             // form can mark the required fields rather than letting the
-            // operator find out by being rejected.
-            'requirements' => $vendorId > 0 ? $config->settings($vendorId)->toArray() : [],
+            // operator find out by being rejected. Resolved even with no
+            // company picked yet — with company_id 0 this settles on the
+            // platform layer, which is what seeds the form's defaults
+            // (e.g. default district) before a company is chosen.
+            'requirements' => $config->settings($companyId)->toArray(),
         ]);
     }
 
@@ -295,6 +338,25 @@ class TicketsController extends ApiController
         }
 
         return $this->respond($this->findTicket((string)$result['ticket_id']), [], 201);
+    }
+
+    /**
+     * PUT /api/tickets/{id}
+     */
+    public function edit(?string $id = null): Response
+    {
+        $ticketId = $this->ticketId($id);
+        $result = (new TicketWorkflow())->update(
+            $ticketId,
+            (array)$this->request->getData(),
+            $this->currentUserId(),
+        );
+
+        if ($result['ok'] === false) {
+            return $this->fail('validation_error', 'The ticket could not be updated.', 422, $result['errors']);
+        }
+
+        return $this->respond($this->findTicket((string)$ticketId));
     }
 
     /**
@@ -595,12 +657,35 @@ class TicketsController extends ApiController
     }
 
     /**
+     * DELETE /api/tickets/{id}/spares/{spareId}
+     *
+     * Withdraw a part recorded in error. The service puts the stock back
+     * where it came from and refuses once the money is decided; replacing
+     * a part is this followed by recording the right one.
+     */
+    public function removeSpare(?string $id = null, ?string $spareId = null): Response
+    {
+        $result = (new SpareService())->removeFromTicket(
+            (int)$this->routeParam('spare_id', $spareId),
+            $this->currentUserId(),
+        );
+
+        if ($result['ok'] === false) {
+            return $this->fail('validation_error', 'The part could not be removed.', 422, $result['errors']);
+        }
+
+        return $this->respond($this->findTicket($id));
+    }
+
+    /**
      * POST /api/tickets/{id}/spares/{spareId}/return
      */
     public function returnSpare(?string $id = null, ?string $spareId = null): Response
     {
         $result = (new SpareService())->returnDefective(
-            (int)$spareId,
+            // The route element arrives as a request param, not a passed
+            // argument — reading it positionally addressed spare 0.
+            (int)$this->routeParam('spare_id', $spareId),
             $this->request->getData('reference'),
             $this->currentUserId(),
         );
@@ -786,6 +871,41 @@ class TicketsController extends ApiController
     }
 
     /**
+     * POST /api/tickets/{id}/charges
+     *
+     * Record additional service agreed on an open job — a BOQ line. Extra
+     * work while the ticket is live is part of the bill being assembled,
+     * not a correction to one already sent, so it does not freeze anything.
+     */
+    public function addServiceLine(?string $id = null): Response
+    {
+        $result = (new TicketAdjustmentService())->addServiceLine(
+            $this->ticketId($id),
+            (array)$this->request->getData(),
+            $this->currentUserId(),
+        );
+
+        if (($result['ok'] ?? false) === false) {
+            $status = match ($result['code'] ?? '') {
+                'not_found' => 404,
+                // Well formed, but the ledger has moved past the stage where
+                // adding to the original bill means anything.
+                'frozen' => 409,
+                default => 422,
+            };
+
+            return $this->fail(
+                (string)($result['code'] ?? 'validation_error'),
+                'The service line could not be recorded.',
+                $status,
+                $result['errors'] ?? [],
+            );
+        }
+
+        return $this->respond($result, [], 201);
+    }
+
+    /**
      * POST /api/tickets/{id}/adjustments
      *
      * Correct a frozen ticket by appending, never by editing. A negative
@@ -819,6 +939,21 @@ class TicketsController extends ApiController
         }
 
         return $this->respond($result, [], 201);
+    }
+
+    /**
+     * DELETE /api/tickets/{id}/charges/{chargeId}
+     */
+    public function removeCharge(?string $id = null, ?string $chargeId = null): Response
+    {
+        $chargeId = (int)$this->routeParam('charge_id', $chargeId);
+        $result = (new TicketAdjustmentService())->remove($chargeId, $this->currentUserId());
+
+        if (($result['ok'] ?? false) === false) {
+            return $this->fail('validation_error', 'The charge line could not be removed.', 422, $result['errors'] ?? []);
+        }
+
+        return $this->respond($this->findTicket($id));
     }
 
     /**
@@ -936,11 +1071,22 @@ class TicketsController extends ApiController
         }
 
         return $query->contain([
-            'Customers', 'Vendors', 'ServiceCenters', 'JobTypes',
+            // The district is half of a Kerala address — without it the panel
+            // shows a street and a town and the technician still has to ring
+            // the desk to find out which one.
+            'Customers' => ['Districts'],
+            'Companies', 'ServiceCenters', 'JobTypes',
             'AssignedTechnicians', 'Brands', 'ProductCategories',
             'Symptoms', 'Resolutions',
             'TicketEvents' => fn ($q) => $q->orderBy(['TicketEvents.occurred_at' => 'DESC']),
-            'TicketHolds', 'TicketSpares', 'TicketCharges', 'TicketAttachments',
+            // The fitted parts are shown as a list on the ticket, so the
+            // catalogue row travels with each line — without it a part is
+            // an id and the desk has to read the activity trail to find out
+            // what is in the customer's set.
+            'TicketSpares' => fn ($q) => $q
+                ->contain(['SpareParts'])
+                ->orderBy(['TicketSpares.created' => 'ASC', 'TicketSpares.id' => 'ASC']),
+            'TicketHolds', 'TicketCharges', 'TicketAttachments',
         ])->first();
     }
 

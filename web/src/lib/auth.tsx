@@ -47,6 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setUser(await api.me(controller.signal))
       } catch (error) {
+        // Our own cleanup aborted the request — the component went away, or
+        // StrictMode remounted it in dev. Nothing was determined and nothing
+        // needs saying; the remount asks again.
+        if (controller.signal.aborted) return
+
         // A 401 here is the normal "not signed in" case, not a problem.
         if (!(error instanceof ApiError && error.isUnauthenticated)) {
           console.error('Could not determine session state', error)

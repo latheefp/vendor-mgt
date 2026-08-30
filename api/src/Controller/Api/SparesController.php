@@ -52,13 +52,13 @@ class SparesController extends ApiController
     {
         $spareParts = $this->fetchTable('SpareParts');
 
-        $vendorId = (int)$this->request->getData('vendor_id');
+        $companyId = (int)$this->request->getData('company_id');
         $partNo = trim((string)$this->request->getData('part_no'));
         $name = trim((string)$this->request->getData('name'));
 
-        if ($vendorId <= 0 || $partNo === '' || $name === '') {
-            return $this->fail('validation_error', 'Vendor, Part Number, and Part Name are required.', 422, [
-                'vendor_id' => $vendorId <= 0 ? ['Select vendor'] : [],
+        if ($companyId <= 0 || $partNo === '' || $name === '') {
+            return $this->fail('validation_error', 'Company, Part Number, and Part Name are required.', 422, [
+                'company_id' => $companyId <= 0 ? ['Select company'] : [],
                 'part_no' => $partNo === '' ? ['Part number is required'] : [],
                 'name' => $name === '' ? ['Part name is required'] : [],
             ]);
@@ -68,7 +68,7 @@ class SparesController extends ApiController
         $mrpRupees = (float)$this->request->getData('mrp_rupees', 0);
 
         $part = $spareParts->newEntity([
-            'vendor_id' => $vendorId,
+            'company_id' => $companyId,
             'product_category_id' => $this->intOrNull('product_category_id'),
             'part_no' => $partNo,
             'name' => $name,
@@ -98,12 +98,12 @@ class SparesController extends ApiController
     public function catalogue(): Response
     {
         $query = $this->fetchTable('SpareParts')->find()
-            ->contain(['Vendors'])
+            ->contain(['Companies'])
             ->orderByAsc('SpareParts.part_no');
 
-        $vendorId = (int)$this->request->getQuery('vendor_id', 0);
-        if ($vendorId > 0) {
-            $query->where(['SpareParts.vendor_id' => $vendorId]);
+        $companyId = (int)$this->request->getQuery('company_id', 0);
+        if ($companyId > 0) {
+            $query->where(['SpareParts.company_id' => $companyId]);
         }
 
         if ($this->request->getQuery('include_inactive') !== '1') {
@@ -146,11 +146,11 @@ class SparesController extends ApiController
      */
     public function stock(): Response
     {
-        $vendorId = (int)$this->request->getQuery('vendor_id', 0);
+        $companyId = (int)$this->request->getQuery('company_id', 0);
         $centreId = (int)$this->request->getQuery('service_center_id', 0);
 
         $rows = (new SpareService())->stockOnHand(
-            $vendorId > 0 ? $vendorId : null,
+            $companyId > 0 ? $companyId : null,
             $centreId > 0 ? $centreId : null,
         );
 
@@ -203,11 +203,11 @@ class SparesController extends ApiController
      */
     public function ageing(): Response
     {
-        $vendorId = (int)$this->request->getQuery('vendor_id', 0);
+        $companyId = (int)$this->request->getQuery('company_id', 0);
         $centreId = (int)$this->request->getQuery('service_center_id', 0);
 
         $result = (new SpareService())->stockAgeing(
-            $vendorId > 0 ? $vendorId : null,
+            $companyId > 0 ? $companyId : null,
             $centreId > 0 ? $centreId : null,
             (int)$this->request->getQuery('within_days', 5),
         );

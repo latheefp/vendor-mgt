@@ -4,11 +4,12 @@ import { DashboardPanel } from './DashboardPanel'
 import { RatePreviewPanel } from './RatePreviewPanel'
 import { TicketsPanel } from './TicketsPanel'
 import { InvoicingPanel } from './InvoicingPanel'
+import { ReceivablesPanel } from './ReceivablesPanel'
 import { SparesPanel } from './SparesPanel'
 import { SettingsPanel } from './SettingsPanel'
 
-type Section = 'dashboard' | 'tickets' | 'spares' | 'invoicing' | 'pricing' | 'settings'
-type SettingsTab = 'users' | 'roles' | 'vendors' | 'rate-cards' | 'products' | 'master-lists'
+type Section = 'dashboard' | 'tickets' | 'spares' | 'invoicing' | 'receivables' | 'pricing' | 'settings'
+type SettingsTab = 'users' | 'technicians' | 'roles' | 'companies' | 'rate-cards' | 'products' | 'master-lists'
 
 export function DeskShell() {
   const { user, logout } = useAuth()
@@ -134,6 +135,19 @@ export function DeskShell() {
               </button>
 
               <button
+                onClick={() => setSection('receivables')}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                  section === 'receivables'
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
+                }`}
+                title="What each company owes and what has been received"
+              >
+                <span className="text-base">📥</span>
+                {!sidebarCollapsed && <span>Receivables</span>}
+              </button>
+
+              <button
                 onClick={() => setSection('pricing')}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   section === 'pricing'
@@ -199,6 +213,21 @@ export function DeskShell() {
                 <button
                   onClick={() => {
                     setSection('settings')
+                    setSettingsTab('technicians')
+                  }}
+                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                    section === 'settings' && settingsTab === 'technicians'
+                      ? 'bg-slate-800 text-brand-400 font-semibold'
+                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-sm">🛠️</span>
+                  <span>Technicians</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setSection('settings')
                     setSettingsTab('roles')
                   }}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
@@ -214,16 +243,16 @@ export function DeskShell() {
                 <button
                   onClick={() => {
                     setSection('settings')
-                    setSettingsTab('vendors')
+                    setSettingsTab('companies')
                   }}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'vendors'
+                    section === 'settings' && settingsTab === 'companies'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
                       : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
                   }`}
                 >
                   <span className="text-sm">🏢</span>
-                  <span>Vendor Companies</span>
+                  <span>Companies</span>
                 </button>
 
                 <button
@@ -346,6 +375,8 @@ export function DeskShell() {
             <SparesPanel />
           ) : section === 'invoicing' ? (
             <InvoicingPanel />
+          ) : section === 'receivables' ? (
+            <ReceivablesPanel />
           ) : section === 'settings' ? (
             <SettingsPanel initialTab={settingsTab} />
           ) : (

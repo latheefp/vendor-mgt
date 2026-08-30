@@ -39,13 +39,13 @@ class RateCardAuthoring
      *
      * @param array<string, mixed> $data
      */
-    public function createDraft(int $vendorId, array $data = []): int
+    public function createDraft(int $companyId, array $data = []): int
     {
         $cards = $this->fetchTable('RateCards');
 
         $latest = $cards->find()
             ->select(['version'])
-            ->where(['vendor_id' => $vendorId])
+            ->where(['company_id' => $companyId])
             ->orderByDesc('version')
             ->disableHydration()
             ->first();
@@ -53,8 +53,8 @@ class RateCardAuthoring
         $version = ((int)($latest['version'] ?? 0)) + 1;
 
         $card = $cards->newEntity([
-            'vendor_id' => $vendorId,
-            'vendor_agreement_id' => $data['vendor_agreement_id'] ?? null,
+            'company_id' => $companyId,
+            'company_agreement_id' => $data['company_agreement_id'] ?? null,
             'name' => $data['name'] ?? sprintf('Rate card v%d', $version),
             'version' => $version,
             'status' => 'draft',
@@ -79,14 +79,14 @@ class RateCardAuthoring
      * also how a company revises rates: clone the active card, edit the
      * three lines that moved, publish.
      *
-     * @param int $targetVendorId  the company the new draft belongs to,
+     * @param int $targetCompanyId  the company the new draft belongs to,
      *                             which need not be the source's company
      */
-    public function cloneCard(int $sourceCardId, int $targetVendorId, array $data = []): int
+    public function cloneCard(int $sourceCardId, int $targetCompanyId, array $data = []): int
     {
         $source = $this->fetchTable('RateCards')->get($sourceCardId);
 
-        $newCardId = $this->createDraft($targetVendorId, $data + [
+        $newCardId = $this->createDraft($targetCompanyId, $data + [
             'name' => sprintf('%s (copy)', $source->name),
             'currency' => $source->currency,
         ]);
@@ -124,6 +124,19 @@ class RateCardAuthoring
     public function addItem(int $cardId, array $data): int
     {
         $this->assertDraft($cardId);
+
+        if (empty($data['label'])) {
+            if (!empty($data['job_type_id'])) {
+                $jobType = $this->fetchTable('JobTypes')->find()->where(['id' => (int)$data['job_type_id']])->first();
+                $label = $jobType ? (string)$jobType->name : 'Basic Service Charge';
+                if (!empty($data['warranty_scope']) && $data['warranty_scope'] !== 'not_applicable') {
+                    $label .= ' (' . str_replace('_', ' ', (string)$data['warranty_scope']) . ')';
+                }
+                $data['label'] = $label;
+            } else {
+                $data['label'] = 'Basic Service Charge';
+            }
+        }
 
         $items = $this->fetchTable('RateCardItems');
         $item = $items->newEntity(['rate_card_id' => $cardId] + $data);
@@ -412,7 +425,7 @@ class RateCardAuthoring
         $supersededId = $connection->transactional(function () use ($cards, $card): ?int {
             $current = $cards->find()
                 ->where([
-                    'vendor_id' => $card->vendor_id,
+                    'company_id' => $card->company_id,
                     'status' => 'active',
                     'id !=' => $card->id,
                 ])

@@ -62,19 +62,19 @@ class RolesController extends ApiController
             'financials' => [
                 'label' => 'Invoicing & Payouts',
                 'permissions' => [
-                    ['code' => 'invoices.view', 'name' => 'View Invoices', 'description' => 'View vendor invoices and payment status'],
-                    ['code' => 'invoices.generate', 'name' => 'Generate Invoices', 'description' => 'Run invoice generation for vendors'],
-                    ['code' => 'invoices.payment', 'name' => 'Record Payments', 'description' => 'Record payment received from vendors'],
+                    ['code' => 'invoices.view', 'name' => 'View Invoices', 'description' => 'View company invoices and payment status'],
+                    ['code' => 'invoices.generate', 'name' => 'Generate Invoices', 'description' => 'Run invoice generation for companies'],
+                    ['code' => 'invoices.payment', 'name' => 'Record Payments', 'description' => 'Record payment received from companies'],
                     ['code' => 'payouts.view', 'name' => 'View Technician Payouts', 'description' => 'View technician earnings and payout runs'],
                     ['code' => 'payouts.generate', 'name' => 'Generate Payouts', 'description' => 'Generate technician payout calculations'],
                     ['code' => 'payouts.approve', 'name' => 'Approve & Pay Payouts', 'description' => 'Approve and record technician payments'],
                 ],
             ],
-            'vendors' => [
-                'label' => 'Vendor Companies & Rate Cards',
+            'companies' => [
+                'label' => 'Companies & Rate Cards',
                 'permissions' => [
-                    ['code' => 'vendors.view', 'name' => 'View Vendor Profiles', 'description' => 'View company agreements and terms'],
-                    ['code' => 'vendors.manage', 'name' => 'Manage Vendors', 'description' => 'Add/Edit vendor companies and settings'],
+                    ['code' => 'companies.view', 'name' => 'View Company Profiles', 'description' => 'View company agreements and terms'],
+                    ['code' => 'companies.manage', 'name' => 'Manage Companies', 'description' => 'Add/Edit companies and settings'],
                     ['code' => 'rates.view', 'name' => 'View Rate Cards', 'description' => 'View company rate cards and SLA rules'],
                     ['code' => 'rates.manage', 'name' => 'Manage Rate Cards', 'description' => 'Create, edit, and publish rate cards & SLA rules'],
                 ],

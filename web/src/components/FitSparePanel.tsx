@@ -50,13 +50,13 @@ export function FitSparePanel({ ticket, onFitted, onError }: FitSparePanelProps)
 
     setLoading(true)
     api
-      .spareCatalogue({ vendor_id: ticket.vendor_id, service_center_id: ticket.service_center_id })
+      .spareCatalogue({ company_id: ticket.company_id, service_center_id: ticket.service_center_id })
       .then(setParts)
       .catch(() => onError('The parts catalogue could not be loaded.'))
       .finally(() => setLoading(false))
     // The catalogue is per company and its balances are per centre, so a
     // ticket moving between either invalidates the list.
-  }, [open, ticket.vendor_id, ticket.service_center_id, onError])
+  }, [open, ticket.company_id, ticket.service_center_id, onError])
 
   const submit = async () => {
     setSubmitting(true)

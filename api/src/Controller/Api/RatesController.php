@@ -36,7 +36,7 @@ class RatesController extends ApiController
      * POST /api/rates/preview
      *
      * {
-     *   "vendor_id": 1,
+     *   "company_id": 1,
      *   "job_type": "service",
      *   "warranty_scope": "in_warranty",
      *   "size_inch": 55,
@@ -50,10 +50,10 @@ class RatesController extends ApiController
     {
         $input = $this->request->getData();
 
-        $vendorId = (int)($input['vendor_id'] ?? 0);
-        if ($vendorId <= 0) {
-            return $this->fail('validation_error', 'A vendor_id is required.', 422, [
-                'vendor_id' => ['Select the vendor this job belongs to.'],
+        $companyId = (int)($input['company_id'] ?? 0);
+        if ($companyId <= 0) {
+            return $this->fail('validation_error', 'A company_id is required.', 422, [
+                'company_id' => ['Select the company this job belongs to.'],
             ]);
         }
 
@@ -66,10 +66,10 @@ class RatesController extends ApiController
 
         $repository = new RateCardRepository();
 
-        // A vendor may send their own wording ("Complaint Type: Service"),
+        // A company may send their own wording ("Complaint Type: Service"),
         // so try the alias table before assuming it is one of our codes.
         $scopeOverride = null;
-        $alias = $repository->resolveVendorJobType($vendorId, $jobType);
+        $alias = $repository->resolveCompanyJobType($companyId, $jobType);
         if ($alias !== null) {
             $jobType = $alias['job_type_code'];
             $scopeOverride = $alias['warranty_scope'];
@@ -90,8 +90,8 @@ class RatesController extends ApiController
                 ? (new DateTimeImmutable((string)$input['received_at']))->format('Y-m-d')
                 : null;
 
-            $cardId = $repository->activeCardId($vendorId, $onDate);
-            $terms = $repository->agreementTerms($vendorId, $onDate);
+            $cardId = $repository->activeCardId($companyId, $onDate);
+            $terms = $repository->agreementTerms($companyId, $onDate);
             $items = $repository->items($cardId);
             $rules = $repository->slaRules($cardId);
 
@@ -187,7 +187,7 @@ class RatesController extends ApiController
             return $this->fail('unrateable_ticket', $e->getMessage(), 422);
         } catch (RateNotFoundException $e) {
             /*
-             * Usually a genuine gap in the vendor agreement rather than a
+             * Usually a genuine gap in the company agreement rather than a
              * bug. The Dianora card, for example, prices out-of-warranty
              * service for 24-43", 45-55" and 65-85" — so a 60" set has no
              * agreed rate at all, and neither does a 44" set anywhere.
@@ -198,7 +198,7 @@ class RatesController extends ApiController
             return $this->fail('rate_not_found', $e->getMessage(), 409, [], [
                 'context' => $e->context->toArray(),
                 'rate_card_id' => $e->rateCardId,
-                'action_required' => 'Confirm this rate with the vendor by email, then add it to the rate card.',
+                'action_required' => 'Confirm this rate with the company by email, then add it to the rate card.',
             ]);
         } catch (Throwable $e) {
             return $this->fail('preview_failed', $e->getMessage(), 500);

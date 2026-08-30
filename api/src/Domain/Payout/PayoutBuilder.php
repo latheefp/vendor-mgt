@@ -14,7 +14,7 @@ use App\Domain\Money;
  *
  * Runs against the frozen ChargeSet rather than against the ticket, which
  * guarantees the two sides of the ledger are derived from the same
- * numbers. If the vendor side later gets an adjustment, the payout side
+ * numbers. If the company side later gets an adjustment, the payout side
  * gets its own adjustment line — it is never silently recomputed.
  *
  * All output lands on the TechnicianPayable ledger as positive amounts,
@@ -183,7 +183,7 @@ final readonly class PayoutBuilder
 
     /**
      * The technician's own travel allowance, which is not the same number
-     * as the vendor's reimbursement. Keeping them separate is what makes
+     * as the company's reimbursement. Keeping them separate is what makes
      * the spread between the two visible instead of accidental.
      */
     private function travelLine(TechnicianRateData $rate, ?float $travelKm): ?ChargeLine

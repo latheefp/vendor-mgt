@@ -10,7 +10,7 @@ use App\Domain\Money;
  * A spare part consumed on a ticket.
  *
  * Only customer-billed spares produce charge lines. In-warranty parts are
- * supplied by the vendor and carry no money for us — they carry an
+ * supplied by the company and carry no money for us — they carry an
  * obligation instead: the defective unit goes back inside 7 days
  * (clause 9), and anything still on our shelf after 30 days is treated as
  * billed to us (clause 10). Those clocks live on the ticket_spares row,
@@ -26,7 +26,7 @@ final readonly class SpareUsage
         public Money $unitCost,
         /** Margin applied, as a decimal percent string within the agreed band. */
         public string $marginPct = '0.00',
-        public Payer $chargedTo = Payer::Vendor,
+        public Payer $chargedTo = Payer::Company,
     ) {
     }
 

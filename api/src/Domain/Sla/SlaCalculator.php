@@ -11,7 +11,7 @@ use DateTimeImmutable;
  *
  * Two decisions here carry real money:
  *
- * 1. Every clock starts at `receivedAt` — the moment the vendor handed us
+ * 1. Every clock starts at `receivedAt` — the moment the company handed us
  *    the job — not at row creation. An email import can lag an assignment
  *    by hours and the agreement does not give those hours back.
  *

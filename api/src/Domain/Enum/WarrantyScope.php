@@ -8,8 +8,8 @@ namespace App\Domain\Enum;
  * has no warranty dimension at all.
  *
  * This distinction decides who pays. In-warranty work is billed to the
- * vendor; out-of-warranty work is collected in cash from the customer by
- * the technician and attracts the vendor's royalty. Getting it wrong does
+ * company; out-of-warranty work is collected in cash from the customer by
+ * the technician and attracts the company's royalty. Getting it wrong does
  * not just misprice a line, it bills the wrong party.
  */
 enum WarrantyScope: string
@@ -24,7 +24,7 @@ enum WarrantyScope: string
     case NotApplicable = 'not_applicable';
 
     /**
-     * Set on intake when the vendor has not told us and we have not yet
+     * Set on intake when the company has not told us and we have not yet
      * checked the serial. A ticket must never be rated in this state: the
      * resolver refuses it rather than guessing which party to bill.
      */

@@ -7,8 +7,8 @@ use Migrations\BaseSeed;
  * Seeds the system from the signed Dianora Electronics agreement.
  *
  * Everything here is transcribed from Service Agreement 2.pdf. It doubles
- * as the reference implementation for onboarding vendor #2: nothing in
- * this file is code the next vendor would need changed, only data.
+ * as the reference implementation for onboarding company #2: nothing in
+ * this file is code the next company would need changed, only data.
  *
  *   bin/cake seeds run DianoraSeed  (run MasterListSeed first)
  */
@@ -18,17 +18,17 @@ class DianoraSeed extends BaseSeed
     {
         $now = date('Y-m-d H:i:s');
 
-        $vendorId = $this->seedVendor($now);
-        $this->seedBrands($vendorId, $now);
-        $this->seedVendorJobTypeAliases($vendorId, $now);
-        $agreementId = $this->seedAgreement($vendorId, $now);
-        $cardId = $this->seedRateCard($vendorId, $agreementId, $now);
+        $companyId = $this->seedCompany($now);
+        $this->seedBrands($companyId, $now);
+        $this->seedCompanyJobTypeAliases($companyId, $now);
+        $agreementId = $this->seedAgreement($companyId, $now);
+        $cardId = $this->seedRateCard($companyId, $agreementId, $now);
         $this->seedRateCardItems($cardId, $now);
         $this->seedSlaRules($cardId, $now);
-        $this->seedProducts($vendorId, $now);
-        $this->seedSpareParts($vendorId, $now);
-        $this->seedSettings($vendorId, $now);
-        $this->seedMasterListOverrides($vendorId, $now);
+        $this->seedProducts($companyId, $now);
+        $this->seedSpareParts($companyId, $now);
+        $this->seedSettings($companyId, $now);
+        $this->seedMasterListOverrides($companyId, $now);
     }
 
     /**
@@ -40,7 +40,7 @@ class DianoraSeed extends BaseSeed
      * change to the default silently passes this company by. An override
      * should exist because someone chose it.
      */
-    private function seedSettings(int $vendorId, string $now): void
+    private function seedSettings(int $companyId, string $now): void
     {
         $settings = [
             // Their own tickets read DN1407260024. Ours are separate, but
@@ -56,7 +56,7 @@ class DianoraSeed extends BaseSeed
 
             // Clause 11 makes email the only valid channel, so a hold the
             // company was not emailed about will not survive a dispute.
-            ['notice.email_vendor_on_hold', 'boolean', '1'],
+            ['notice.email_company_on_hold', 'boolean', '1'],
 
             // Both closure gates are off, for the same reason: much of this
             // work is in rural Kozhikode where a customer may have no signal
@@ -75,7 +75,7 @@ class DianoraSeed extends BaseSeed
         $rows = [];
         foreach ($settings as [$key, $type, $value]) {
             $rows[] = [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'setting_key' => $key,
                 'value_type' => $type,
                 'value' => $value,
@@ -85,7 +85,7 @@ class DianoraSeed extends BaseSeed
             ];
         }
 
-        $this->table('vendor_settings')->insert($rows)->save();
+        $this->table('company_settings')->insert($rows)->save();
     }
 
     /**
@@ -96,17 +96,17 @@ class DianoraSeed extends BaseSeed
      * shared one, so the rate resolver still matches on a stable code
      * while the behaviour behind it differs per company.
      */
-    private function seedMasterListOverrides(int $vendorId, string $now): void
+    private function seedMasterListOverrides(int $companyId, string $now): void
     {
         $sharedHold = $this->fetchRow(
             "SELECT id, code, name, description, sort_order
                FROM hold_reasons
-              WHERE code = 'video_proof_awaited' AND vendor_id IS NULL",
+              WHERE code = 'video_proof_awaited' AND company_id IS NULL",
         );
 
         if ($sharedHold !== false && $sharedHold !== null) {
             $this->table('hold_reasons')->insert([[
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'code' => $sharedHold['code'],
                 'name' => 'Awaiting symptom video from customer',
                 'description' => 'Dianora accepts a customer video as evidence while the clock is stopped.',
@@ -114,7 +114,7 @@ class DianoraSeed extends BaseSeed
                 // differs is the notice requirement — clause 11 means this
                 // pause is only defensible if Dianora were emailed about it.
                 'pauses_sla' => 1,
-                'requires_vendor_notice' => 1,
+                'requires_company_notice' => 1,
                 'sort_order' => (int)$sharedHold['sort_order'],
                 'is_active' => 1,
                 'override_note' => 'Clause 11: the pause needs an email to Dianora to survive a dispute.',
@@ -123,12 +123,12 @@ class DianoraSeed extends BaseSeed
         }
 
         $sharedResolution = $this->fetchRow(
-            "SELECT code, sort_order FROM resolutions WHERE code = 'no_fault_found' AND vendor_id IS NULL",
+            "SELECT code, sort_order FROM resolutions WHERE code = 'no_fault_found' AND company_id IS NULL",
         );
 
         if ($sharedResolution !== false && $sharedResolution !== null) {
             $this->table('resolutions')->insert([[
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'code' => $sharedResolution['code'],
                 'name' => 'No fault found',
                 'description' => 'Dianora does not pay a visit charge where no fault is demonstrated.',
@@ -150,11 +150,11 @@ class DianoraSeed extends BaseSeed
      * sub-brands, and the aliases cover the casing and spelling variants
      * their export actually produces.
      */
-    private function seedBrands(int $vendorId, string $now): void
+    private function seedBrands(int $companyId, string $now): void
     {
         $this->table('brands')->insert([
             [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'code' => 'dianox',
                 'name' => 'Dianox',
                 'aliases' => json_encode(['DIANOX', 'Dianox', 'DIANOX LED']),
@@ -162,7 +162,7 @@ class DianoraSeed extends BaseSeed
                 'created' => $now, 'modified' => $now,
             ],
             [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'code' => 'dianora',
                 'name' => 'Dianora',
                 'aliases' => json_encode(['DIANORA', 'Dianora']),
@@ -176,11 +176,11 @@ class DianoraSeed extends BaseSeed
      * Dianora's "Complaint Type" wording, mapped onto our job types.
      *
      * The sample ticket says "Complaint Type: Service", which has to
-     * become our `service` job type at import. Where a vendor encodes
+     * become our `service` job type at import. Where a company encodes
      * warranty status into the complaint type itself, the alias carries
      * the scope too, so the importer never has to guess who to bill.
      */
-    private function seedVendorJobTypeAliases(int $vendorId, string $now): void
+    private function seedCompanyJobTypeAliases(int $companyId, string $now): void
     {
         $jobTypes = $this->jobTypeIds();
 
@@ -188,10 +188,10 @@ class DianoraSeed extends BaseSeed
          * No case variants needed. The column collates as
          * utf8mb4_unicode_ci, so "Service", "SERVICE" and "service" all
          * match this one row — which is the behaviour we want, since the
-         * vendor's export is inconsistent about casing.
+         * company's export is inconsistent about casing.
          */
         $aliases = [
-            // vendor's label, our job type, warranty scope override
+            // company's label, our job type, warranty scope override
             ['Service', 'service', null],
             ['Service Call', 'service', null],
             ['Breakdown', 'service', null],
@@ -211,21 +211,21 @@ class DianoraSeed extends BaseSeed
         $rows = [];
         foreach ($aliases as [$label, $jobType, $scope]) {
             $rows[] = [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'job_type_id' => $jobTypes[$jobType],
-                'vendor_label' => $label,
+                'company_label' => $label,
                 'warranty_scope' => $scope,
                 'is_active' => 1,
                 'created' => $now, 'modified' => $now,
             ];
         }
 
-        $this->table('vendor_job_type_aliases')->insert($rows)->save();
+        $this->table('company_job_type_aliases')->insert($rows)->save();
     }
 
-    private function seedVendor(string $now): int
+    private function seedCompany(string $now): int
     {
-        $this->table('vendors')->insert([[
+        $this->table('companies')->insert([[
             'code' => 'DIANORA',
             'name' => 'Dianora',
             'legal_name' => 'DIANORA ELECTRONICS PVT LTD',
@@ -246,16 +246,16 @@ class DianoraSeed extends BaseSeed
             'created' => $now, 'modified' => $now,
         ]])->save();
 
-        return (int)$this->fetchRow("SELECT id FROM vendors WHERE code = 'DIANORA'")['id'];
+        return (int)$this->fetchRow("SELECT id FROM companies WHERE code = 'DIANORA'")['id'];
     }
 
     /**
      * Every commercial term from the agreement, as data.
      */
-    private function seedAgreement(int $vendorId, string $now): int
+    private function seedAgreement(int $companyId, string $now): int
     {
-        $this->table('vendor_agreements')->insert([[
-            'vendor_id' => $vendorId,
+        $this->table('company_agreements')->insert([[
+            'company_id' => $companyId,
             'agreement_no' => 'DIANORA-SA-2',
             'title' => 'Dianora Electronics service centre agreement',
             'status' => 'active',
@@ -296,15 +296,15 @@ class DianoraSeed extends BaseSeed
         ]])->save();
 
         return (int)$this->fetchRow(
-            "SELECT id FROM vendor_agreements WHERE agreement_no = 'DIANORA-SA-2'",
+            "SELECT id FROM company_agreements WHERE agreement_no = 'DIANORA-SA-2'",
         )['id'];
     }
 
-    private function seedRateCard(int $vendorId, int $agreementId, string $now): int
+    private function seedRateCard(int $companyId, int $agreementId, string $now): int
     {
         $this->table('rate_cards')->insert([[
-            'vendor_id' => $vendorId,
-            'vendor_agreement_id' => $agreementId,
+            'company_id' => $companyId,
+            'company_agreement_id' => $agreementId,
             'name' => 'Dianora service policy v1',
             'version' => 1,
             'status' => 'active',
@@ -316,8 +316,8 @@ class DianoraSeed extends BaseSeed
         ]])->save();
 
         return (int)$this->fetchRow(sprintf(
-            'SELECT id FROM rate_cards WHERE vendor_id = %d AND version = 1',
-            $vendorId,
+            'SELECT id FROM rate_cards WHERE company_id = %d AND version = 1',
+            $companyId,
         ))['id'];
     }
 
@@ -365,16 +365,16 @@ class DianoraSeed extends BaseSeed
             ];
         };
 
-        // ---- INSTALLATION (billed to the vendor) --------------------
-        $add('installation', 'not_applicable', 350, 'vendor', 'Installation 24"-43"', '24.00', '43.00');
-        $add('installation', 'not_applicable', 500, 'vendor', 'Installation 45"-65"', '45.00', '65.00');
-        $add('demo_inspection', 'not_applicable', 250, 'vendor', 'Demo / site inspection');
+        // ---- INSTALLATION (billed to the company) --------------------
+        $add('installation', 'not_applicable', 350, 'company', 'Installation 24"-43"', '24.00', '43.00');
+        $add('installation', 'not_applicable', 500, 'company', 'Installation 45"-65"', '45.00', '65.00');
+        $add('demo_inspection', 'not_applicable', 250, 'company', 'Demo / site inspection');
 
-        // ---- SERVICE IN WARRANTY (billed to the vendor) -------------
-        $add('service', 'in_warranty', 400, 'vendor', 'Service in warranty 24"-43"', '24.00', '43.00');
-        $add('service', 'in_warranty', 500, 'vendor', 'Service in warranty 45"-85"', '45.00', '85.00');
-        $add('exchange_delivery', 'in_warranty', 700, 'vendor', 'TV set exchange or delivery');
-        $add('panel_backlight', 'in_warranty', 1000, 'vendor', 'Open cell & backlight replacement and service');
+        // ---- SERVICE IN WARRANTY (billed to the company) -------------
+        $add('service', 'in_warranty', 400, 'company', 'Service in warranty 24"-43"', '24.00', '43.00');
+        $add('service', 'in_warranty', 500, 'company', 'Service in warranty 45"-85"', '45.00', '85.00');
+        $add('exchange_delivery', 'in_warranty', 700, 'company', 'TV set exchange or delivery');
+        $add('panel_backlight', 'in_warranty', 1000, 'company', 'Open cell & backlight replacement and service');
 
         // ---- SERVICE OUT OF WARRANTY (collected from the customer) --
         $add('service', 'out_of_warranty', 500, 'customer', 'Service out of warranty 24"-43"', '24.00', '43.00');
@@ -479,7 +479,7 @@ class DianoraSeed extends BaseSeed
     /**
      * The model catalogue.
      *
-     * This is the table that makes size-banded pricing work. The vendor
+     * This is the table that makes size-banded pricing work. The company
      * sends a model code ("Model: DX4325FHDSVK") and rarely a screen size,
      * but the rate depends entirely on the size — so the model must resolve
      * to one. Without this lookup, every ticket would need a human to read
@@ -489,10 +489,10 @@ class DianoraSeed extends BaseSeed
      * Warranty length is per model too: "3 years, 1 & 2 years depends upon
      * the model".
      */
-    private function seedProducts(int $vendorId, string $now): void
+    private function seedProducts(int $companyId, string $now): void
     {
         $categories = $this->categoryIds();
-        $brands = $this->brandIds($vendorId);
+        $brands = $this->brandIds($companyId);
         $rows = [];
 
         // Dianox DX series — the naming on the sample ticket, where
@@ -507,7 +507,7 @@ class DianoraSeed extends BaseSeed
 
         foreach ($dianoxModels as [$model, $size, $panel, $warrantyMonths]) {
             $rows[] = [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'brand_id' => $brands['dianox'],
                 'product_category_id' => $categories['led_tv'],
                 'model_no' => $model,
@@ -534,7 +534,7 @@ class DianoraSeed extends BaseSeed
 
         foreach ($dianoraModels as [$model, $size, $warrantyMonths]) {
             $rows[] = [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'brand_id' => $brands['dianora'],
                 'product_category_id' => $categories['led_tv'],
                 'model_no' => $model,
@@ -553,9 +553,9 @@ class DianoraSeed extends BaseSeed
     /**
      * @return array<string, int>
      */
-    private function brandIds(int $vendorId): array
+    private function brandIds(int $companyId): array
     {
-        $rows = $this->fetchAll(sprintf('SELECT id, code FROM brands WHERE vendor_id = %d', $vendorId));
+        $rows = $this->fetchAll(sprintf('SELECT id, code FROM brands WHERE company_id = %d', $companyId));
         $map = [];
         foreach ($rows as $row) {
             $map[$row['code']] = (int)$row['id'];
@@ -564,13 +564,13 @@ class DianoraSeed extends BaseSeed
         return $map;
     }
 
-    private function seedSpareParts(int $vendorId, string $now): void
+    private function seedSpareParts(int $companyId, string $now): void
     {
         $categories = $this->categoryIds();
 
         $this->table('spare_parts')->insert([
             [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'product_category_id' => $categories['led_tv'],
                 'part_no' => 'DN-PANEL-43',
                 'name' => 'Open cell panel 43"',
@@ -582,7 +582,7 @@ class DianoraSeed extends BaseSeed
                 'created' => $now, 'modified' => $now,
             ],
             [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'product_category_id' => $categories['led_tv'],
                 'part_no' => 'DN-BLSTRIP-43',
                 'name' => 'Backlight strip set 43"',
@@ -594,7 +594,7 @@ class DianoraSeed extends BaseSeed
                 'created' => $now, 'modified' => $now,
             ],
             [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'product_category_id' => $categories['led_tv'],
                 'part_no' => 'DN-MBOARD-UNI',
                 'name' => 'Universal main board',
@@ -606,7 +606,7 @@ class DianoraSeed extends BaseSeed
                 'created' => $now, 'modified' => $now,
             ],
             [
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'product_category_id' => $categories['led_tv'],
                 'part_no' => 'DN-PSU-UNI',
                 'name' => 'Power supply board',

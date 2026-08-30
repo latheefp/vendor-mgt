@@ -195,13 +195,13 @@ final class CompanyPolicyTest extends TestCase
 
         // Out-of-warranty 43" service is Rs.500 on this card, so the narrow
         // reading takes 10% of Rs.500 = Rs.50.
-        $this->assertSame(5_000, $this->sumOf($narrow, ChargeLineType::VendorRoyalty));
+        $this->assertSame(5_000, $this->sumOf($narrow, ChargeLineType::CompanyRoyalty));
 
         // The broad reading adds the customer-billed spare at cost + 10%:
         // Rs.4,000 + Rs.400 = Rs.4,400, making the basis Rs.4,900 and the
         // royalty Rs.490 — nearly ten times the narrow reading, which is
         // why this cannot be left to whoever writes the next importer.
-        $this->assertSame(49_000, $this->sumOf($broad, ChargeLineType::VendorRoyalty));
+        $this->assertSame(49_000, $this->sumOf($broad, ChargeLineType::CompanyRoyalty));
     }
 
     /**
@@ -218,14 +218,14 @@ final class CompanyPolicyTest extends TestCase
                 name: 'Open cell 43"',
                 quantity: 1,
                 unitCost: Money::fromRupees(4_000),
-                chargedTo: Payer::Vendor,
+                chargedTo: Payer::Company,
             ),
         ];
 
         $broad = $this->outOfWarrantyCharges($this->otherCompanyTerms(royaltyOnSpares: true), $spares);
 
         // Rs.500 service charge only — the part was never collected for.
-        $this->assertSame(5_000, $this->sumOf($broad, ChargeLineType::VendorRoyalty));
+        $this->assertSame(5_000, $this->sumOf($broad, ChargeLineType::CompanyRoyalty));
     }
 
     /**
@@ -237,8 +237,8 @@ final class CompanyPolicyTest extends TestCase
         $ten = $this->outOfWarrantyCharges($this->otherCompanyTerms(royaltyPct: '10.00'));
         $fifteen = $this->outOfWarrantyCharges($this->otherCompanyTerms(royaltyPct: '15.00'));
 
-        $this->assertSame(5_000, $this->sumOf($ten, ChargeLineType::VendorRoyalty));
-        $this->assertSame(7_500, $this->sumOf($fifteen, ChargeLineType::VendorRoyalty));
+        $this->assertSame(5_000, $this->sumOf($ten, ChargeLineType::CompanyRoyalty));
+        $this->assertSame(7_500, $this->sumOf($fifteen, ChargeLineType::CompanyRoyalty));
     }
 
     // -----------------------------------------------------------------

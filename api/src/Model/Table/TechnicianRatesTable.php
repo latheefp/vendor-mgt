@@ -86,8 +86,8 @@ class TechnicianRatesTable extends Table
             ->allowEmptyString('flat_amount_paise');
 
         $validator
-            ->decimal('pct_of_vendor')
-            ->allowEmptyString('pct_of_vendor');
+            ->decimal('pct_of_company')
+            ->allowEmptyString('pct_of_company');
 
         $validator
             ->allowEmptyString('monthly_salary_paise');

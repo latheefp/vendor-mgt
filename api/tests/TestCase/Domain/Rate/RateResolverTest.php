@@ -69,24 +69,24 @@ final class RateResolverTest extends TestCase
 
         return [
             // installation
-            'install 24"'          => [DianoraRateCard::JOB_INSTALLATION, $na, 24.0, 350, Payer::Vendor],
-            'install 32"'          => [DianoraRateCard::JOB_INSTALLATION, $na, 32.0, 350, Payer::Vendor],
-            'install 43" boundary' => [DianoraRateCard::JOB_INSTALLATION, $na, 43.0, 350, Payer::Vendor],
-            'install 45" boundary' => [DianoraRateCard::JOB_INSTALLATION, $na, 45.0, 500, Payer::Vendor],
-            'install 55"'          => [DianoraRateCard::JOB_INSTALLATION, $na, 55.0, 500, Payer::Vendor],
-            'install 65" boundary' => [DianoraRateCard::JOB_INSTALLATION, $na, 65.0, 500, Payer::Vendor],
+            'install 24"'          => [DianoraRateCard::JOB_INSTALLATION, $na, 24.0, 350, Payer::Company],
+            'install 32"'          => [DianoraRateCard::JOB_INSTALLATION, $na, 32.0, 350, Payer::Company],
+            'install 43" boundary' => [DianoraRateCard::JOB_INSTALLATION, $na, 43.0, 350, Payer::Company],
+            'install 45" boundary' => [DianoraRateCard::JOB_INSTALLATION, $na, 45.0, 500, Payer::Company],
+            'install 55"'          => [DianoraRateCard::JOB_INSTALLATION, $na, 55.0, 500, Payer::Company],
+            'install 65" boundary' => [DianoraRateCard::JOB_INSTALLATION, $na, 65.0, 500, Payer::Company],
 
             // demo has no size dimension at all
-            'demo, size known'     => [DianoraRateCard::JOB_DEMO, $na, 43.0, 250, Payer::Vendor],
-            'demo, size unknown'   => [DianoraRateCard::JOB_DEMO, $na, null, 250, Payer::Vendor],
+            'demo, size known'     => [DianoraRateCard::JOB_DEMO, $na, 43.0, 250, Payer::Company],
+            'demo, size unknown'   => [DianoraRateCard::JOB_DEMO, $na, null, 250, Payer::Company],
 
-            // service in warranty — billed to the vendor
-            'iw service 24"'       => [DianoraRateCard::JOB_SERVICE, $iw, 24.0, 400, Payer::Vendor],
-            'iw service 43"'       => [DianoraRateCard::JOB_SERVICE, $iw, 43.0, 400, Payer::Vendor],
-            'iw service 45"'       => [DianoraRateCard::JOB_SERVICE, $iw, 45.0, 500, Payer::Vendor],
-            'iw service 85"'       => [DianoraRateCard::JOB_SERVICE, $iw, 85.0, 500, Payer::Vendor],
-            'iw exchange'          => [DianoraRateCard::JOB_EXCHANGE, $iw, 55.0, 700, Payer::Vendor],
-            'iw panel'             => [DianoraRateCard::JOB_PANEL, $iw, 55.0, 1000, Payer::Vendor],
+            // service in warranty — billed to the company
+            'iw service 24"'       => [DianoraRateCard::JOB_SERVICE, $iw, 24.0, 400, Payer::Company],
+            'iw service 43"'       => [DianoraRateCard::JOB_SERVICE, $iw, 43.0, 400, Payer::Company],
+            'iw service 45"'       => [DianoraRateCard::JOB_SERVICE, $iw, 45.0, 500, Payer::Company],
+            'iw service 85"'       => [DianoraRateCard::JOB_SERVICE, $iw, 85.0, 500, Payer::Company],
+            'iw exchange'          => [DianoraRateCard::JOB_EXCHANGE, $iw, 55.0, 700, Payer::Company],
+            'iw panel'             => [DianoraRateCard::JOB_PANEL, $iw, 55.0, 1000, Payer::Company],
 
             // service out of warranty — collected from the customer
             'oow service 32"'      => [DianoraRateCard::JOB_SERVICE, $oow, 32.0, 500, Payer::Customer],
@@ -117,7 +117,7 @@ final class RateResolverTest extends TestCase
         );
 
         $this->assertSame(40_000, $inWarranty->amount()->paise);
-        $this->assertSame(Payer::Vendor, $inWarranty->payer());
+        $this->assertSame(Payer::Company, $inWarranty->payer());
 
         $this->assertSame(50_000, $outOfWarranty->amount()->paise);
         $this->assertSame(Payer::Customer, $outOfWarranty->payer());
@@ -139,7 +139,7 @@ final class RateResolverTest extends TestCase
     public function testOutOfWarrantyGapBetween56And64InchesFailsLoudly(): void
     {
         $this->expectException(RateNotFoundException::class);
-        $this->expectExceptionMessageMatches('/gap in the vendor agreement/');
+        $this->expectExceptionMessageMatches('/gap in the company agreement/');
 
         $this->resolver->resolve(
             new RateContext(DianoraRateCard::JOB_SERVICE, WarrantyScope::OutOfWarranty, sizeInch: 60),
@@ -228,7 +228,7 @@ final class RateResolverTest extends TestCase
 
     /**
      * A rate naming a specific product category beats a generic one, so a
-     * vendor can add "washing machine service" without disturbing the
+     * company can add "washing machine service" without disturbing the
      * catch-all that already prices televisions.
      */
     public function testCategorySpecificItemBeatsCatchAll(): void
@@ -239,7 +239,7 @@ final class RateResolverTest extends TestCase
                 jobTypeCode: 'service',
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(400),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Any product',
             ),
             new RateCardItemData(
@@ -247,7 +247,7 @@ final class RateResolverTest extends TestCase
                 jobTypeCode: 'service',
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(650),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Washing machine',
                 productCategoryCode: 'washing_machine',
             ),
@@ -278,7 +278,7 @@ final class RateResolverTest extends TestCase
                 jobTypeCode: 'service',
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(500),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Broad 45-85',
                 sizeMinInch: 45,
                 sizeMaxInch: 85,
@@ -288,7 +288,7 @@ final class RateResolverTest extends TestCase
                 jobTypeCode: 'service',
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(900),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Narrow 75-85',
                 sizeMinInch: 75,
                 sizeMaxInch: 85,

@@ -13,7 +13,7 @@ use Cake\Validation\Validator;
  *
  * @property \App\Model\Table\RateCardItemsTable&\Cake\ORM\Association\HasMany $RateCardItems
  * @property \App\Model\Table\TicketsTable&\Cake\ORM\Association\HasMany $Tickets
- * @property \App\Model\Table\VendorJobTypeAliasesTable&\Cake\ORM\Association\HasMany $VendorJobTypeAliases
+ * @property \App\Model\Table\CompanyJobTypeAliasesTable&\Cake\ORM\Association\HasMany $CompanyJobTypeAliases
  *
  * @method \App\Model\Entity\JobType newEmptyEntity()
  * @method \App\Model\Entity\JobType newEntity(array $data, array $options = [])
@@ -51,7 +51,7 @@ class JobTypesTable extends Table
 
         $this->addBehavior('Timestamp');
 
-        // vendor_id null = shared baseline; set = this company's own entry.
+        // company_id null = shared baseline; set = this company's own entry.
         $this->addCompanyScope();
 
         $this->hasMany('RateCardItems', [
@@ -60,7 +60,7 @@ class JobTypesTable extends Table
         $this->hasMany('Tickets', [
             'foreignKey' => 'job_type_id',
         ]);
-        $this->hasMany('VendorJobTypeAliases', [
+        $this->hasMany('CompanyJobTypeAliases', [
             'foreignKey' => 'job_type_id',
         ]);
     }
@@ -74,7 +74,7 @@ class JobTypesTable extends Table
     public function validationDefault(Validator $validator): Validator
     {
         // null is meaningful here: it marks the shared baseline row.
-        $validator->allowEmptyString('vendor_id');
+        $validator->allowEmptyString('company_id');
         $validator->scalar('override_note')->maxLength('override_note', 255)
             ->allowEmptyString('override_note');
 
@@ -86,7 +86,7 @@ class JobTypesTable extends Table
             ->add('code', 'unique', [
                 // Scoped: a company's override deliberately reuses the
                 // code of the shared row it shadows.
-                'rule' => ['validateUnique', ['scope' => ['vendor_id'], 'allowMultipleNulls' => false]],
+                'rule' => ['validateUnique', ['scope' => ['company_id'], 'allowMultipleNulls' => false]],
                 'provider' => 'table',
                 'message' => 'This code is already used by this company.',
             ]);

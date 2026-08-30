@@ -32,20 +32,20 @@ class RateCardRepository
     use LocatorAwareTrait;
 
     /**
-     * The rate card in force for a vendor on a given date.
+     * The rate card in force for a company on a given date.
      *
      * Date-driven rather than "the latest one", because a ticket worked in
      * March must be priced under March's card even if April's is now
      * active.
      */
-    public function activeCardId(int $vendorId, ?string $onDate = null): int
+    public function activeCardId(int $companyId, ?string $onDate = null): int
     {
         $onDate ??= date('Y-m-d');
 
         $card = $this->fetchTable('RateCards')->find()
             ->select(['id'])
             ->where([
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'status' => 'active',
                 'effective_from <=' => $onDate,
                 'OR' => [
@@ -59,8 +59,8 @@ class RateCardRepository
 
         if ($card === null) {
             throw new RecordNotFoundException(sprintf(
-                'No active rate card for vendor %d on %s.',
-                $vendorId,
+                'No active rate card for company %d on %s.',
+                $companyId,
                 $onDate,
             ));
         }
@@ -181,15 +181,15 @@ class RateCardRepository
     }
 
     /**
-     * The commercial terms in force for a vendor.
+     * The commercial terms in force for a company.
      */
-    public function agreementTerms(int $vendorId, ?string $onDate = null): AgreementTerms
+    public function agreementTerms(int $companyId, ?string $onDate = null): AgreementTerms
     {
         $onDate ??= date('Y-m-d');
 
-        $row = $this->fetchTable('VendorAgreements')->find()
+        $row = $this->fetchTable('CompanyAgreements')->find()
             ->where([
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'status' => 'active',
                 'effective_from <=' => $onDate,
                 'OR' => [
@@ -203,8 +203,8 @@ class RateCardRepository
 
         if ($row === null) {
             throw new RecordNotFoundException(sprintf(
-                'No active agreement for vendor %d on %s.',
-                $vendorId,
+                'No active agreement for company %d on %s.',
+                $companyId,
                 $onDate,
             ));
         }
@@ -278,7 +278,7 @@ class RateCardRepository
                 flatAmount: $row['flat_amount_paise'] !== null
                     ? Money::fromPaise((int)$row['flat_amount_paise'])
                     : null,
-                pctOfVendor: $row['pct_of_vendor'] !== null ? (string)$row['pct_of_vendor'] : null,
+                pctOfCompany: $row['pct_of_company'] !== null ? (string)$row['pct_of_company'] : null,
                 monthlySalary: $row['monthly_salary_paise'] !== null
                     ? Money::fromPaise((int)$row['monthly_salary_paise'])
                     : null,
@@ -305,30 +305,30 @@ class RateCardRepository
     }
 
     /**
-     * Translate a vendor's own complaint-type wording into our job type.
+     * Translate a company's own complaint-type wording into our job type.
      *
-     * Dianora sends "Complaint Type: Service"; another vendor will send
+     * Dianora sends "Complaint Type: Service"; another company will send
      * "Breakdown" or "Out of Warranty Repair". Matching is case-insensitive
      * because the column collates as utf8mb4_unicode_ci — which is what the
-     * vendors' inconsistent casing requires.
+     * companies' inconsistent casing requires.
      *
      * @return array{job_type_code: string, warranty_scope: ?string}|null
      */
-    public function resolveVendorJobType(int $vendorId, string $vendorLabel): ?array
+    public function resolveCompanyJobType(int $companyId, string $companyLabel): ?array
     {
-        $row = $this->fetchTable('VendorJobTypeAliases')->find()
-            ->select(['VendorJobTypeAliases.warranty_scope', 'job_type_code' => 'JobTypes.code'])
+        $row = $this->fetchTable('CompanyJobTypeAliases')->find()
+            ->select(['CompanyJobTypeAliases.warranty_scope', 'job_type_code' => 'JobTypes.code'])
             ->join([
                 'JobTypes' => [
                     'table' => 'job_types',
                     'type' => 'INNER',
-                    'conditions' => 'JobTypes.id = VendorJobTypeAliases.job_type_id',
+                    'conditions' => 'JobTypes.id = CompanyJobTypeAliases.job_type_id',
                 ],
             ])
             ->where([
-                'VendorJobTypeAliases.vendor_id' => $vendorId,
-                'VendorJobTypeAliases.vendor_label' => trim($vendorLabel),
-                'VendorJobTypeAliases.is_active' => true,
+                'CompanyJobTypeAliases.company_id' => $companyId,
+                'CompanyJobTypeAliases.company_label' => trim($companyLabel),
+                'CompanyJobTypeAliases.is_active' => true,
             ])
             ->disableHydration()
             ->first();

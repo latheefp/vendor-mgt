@@ -7,13 +7,13 @@ use Migrations\BaseSeed;
  * The controlled vocabularies, seeded from the shape of a real Dianora
  * ticket.
  *
- * Aliases matter more than they look. The vendor sends district and brand
+ * Aliases matter more than they look. The company sends district and brand
  * as free text, and Kozhikode is spelt at least four different ways in the
  * wild ("Kozhikkode", "Calicut", "KOZHIKODE"). Every alias recorded here
  * is one import that resolves cleanly instead of landing in a review
  * queue for a human to fix by hand.
  *
- * Run this BEFORE any vendor seed — vendor data references these lists.
+ * Run this BEFORE any company seed — company data references these lists.
  *
  *   bin/cake seeds run MasterListSeed
  */
@@ -46,7 +46,7 @@ class MasterListSeed extends BaseSeed
         $keralaId = (int)$this->fetchRow("SELECT id FROM states WHERE code = 'KL'")['id'];
 
         // All 14 Kerala districts, with the spellings and old names the
-        // vendor's system actually emits.
+        // company's system actually emits.
         $districts = [
             ['TVM', 'Thiruvananthapuram', ['Trivandrum', 'TVPM']],
             ['KLM', 'Kollam', ['Quilon']],
@@ -180,23 +180,23 @@ class MasterListSeed extends BaseSeed
      * `pauses_sla` is the honest part of this table. A customer who is
      * away stops the clock; our own shortage of technicians does not. If
      * every reason paused the clock, our SLA numbers would be fiction and
-     * the first vendor audit would say so.
+     * the first company audit would say so.
      */
     private function seedHoldReasons(string $now): void
     {
         $reasons = [
-            // code, name, pauses SLA, needs vendor notice
+            // code, name, pauses SLA, needs company notice
             ['customer_unavailable', 'Customer unavailable', true, true],
             ['customer_postponed', 'Customer asked to postpone', true, true],
             ['address_wrong', 'Address or contact number incorrect', true, true],
             ['access_denied', 'No access to the site', true, true],
             ['video_proof_awaited', 'Awaiting symptom video from customer', true, true],
-            ['spare_awaited', 'Awaiting spare part from vendor', true, true],
-            ['vendor_approval_pending', 'Awaiting vendor approval or estimate', true, true],
+            ['spare_awaited', 'Awaiting spare part from company', true, true],
+            ['company_approval_pending', 'Awaiting company approval or estimate', true, true],
             ['estimate_with_customer', 'Estimate with customer for approval', true, true],
             // These are ours to own. They are recorded for management
             // visibility, but they do not stop the clock and do not get
-            // claimed against the vendor.
+            // claimed against the company.
             ['technician_unavailable', 'No technician available', false, false],
             ['workshop_backlog', 'Workshop backlog', false, false],
             ['other', 'Other (explain in notes)', false, true],
@@ -209,7 +209,7 @@ class MasterListSeed extends BaseSeed
                 'code' => $code,
                 'name' => $name,
                 'pauses_sla' => (int)$pauses,
-                'requires_vendor_notice' => (int)$notice,
+                'requires_company_notice' => (int)$notice,
                 'sort_order' => ++$order,
                 'is_active' => 1,
                 'created' => $now, 'modified' => $now,
@@ -233,7 +233,7 @@ class MasterListSeed extends BaseSeed
             [
                 'code' => 'desk',
                 'name' => 'Service desk',
-                'description' => 'Intake, assignment, holds and vendor correspondence',
+                'description' => 'Intake, assignment, holds and company correspondence',
                 'permissions' => json_encode([
                     'tickets.*', 'customers.*', 'holds.*', 'technicians.view', 'reports.view',
                 ]),
@@ -325,7 +325,7 @@ class MasterListSeed extends BaseSeed
         /*
          * Our own job vocabulary — the key the rate resolver matches on.
          * Five job types express the entire Dianora card, and they are
-         * intended to stay stable as further vendors are onboarded.
+         * intended to stay stable as further companies are onboarded.
          */
         $this->table('job_types')->insert([
             [

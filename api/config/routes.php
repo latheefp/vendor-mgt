@@ -81,6 +81,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/tickets', ['controller' => 'Tickets', 'action' => 'index', 'prefix' => 'Api']);
         $builder->post('/tickets', ['controller' => 'Tickets', 'action' => 'add', 'prefix' => 'Api']);
         $builder->get('/tickets/{id}', ['controller' => 'Tickets', 'action' => 'view', 'prefix' => 'Api']);
+        $builder->put('/tickets/{id}', ['controller' => 'Tickets', 'action' => 'edit', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/assign', ['controller' => 'Tickets', 'action' => 'assign', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/checkin', ['controller' => 'Tickets', 'action' => 'checkin', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/checkout', ['controller' => 'Tickets', 'action' => 'checkout', 'prefix' => 'Api']);
@@ -93,6 +94,9 @@ return function (RouteBuilder $routes): void {
         $builder->get('/attachments/{attachment_id}', ['controller' => 'Tickets', 'action' => 'serveAttachment', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/spares', ['controller' => 'Tickets', 'action' => 'addSpare', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/spares/{spare_id}/return', ['controller' => 'Tickets', 'action' => 'returnSpare', 'prefix' => 'Api']);
+        // Withdrawing a line recorded in error. Only until the charges
+        // freeze — after that the correction is an adjustment.
+        $builder->delete('/tickets/{id}/spares/{spare_id}', ['controller' => 'Tickets', 'action' => 'removeSpare', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/contact', ['controller' => 'Tickets', 'action' => 'contact', 'prefix' => 'Api']);
         // Holds are what make an SLA window defensible, so starting and
         // releasing one are first-class actions rather than status edits.
@@ -110,19 +114,26 @@ return function (RouteBuilder $routes): void {
         // the fact. Editing a frozen line would rewrite an invoice already
         // sent, so a correction is always a new row.
         $builder->get('/tickets/{id}/charges', ['controller' => 'Tickets', 'action' => 'charges', 'prefix' => 'Api']);
+        // Extra work agreed while the job is open (BOQ) and a correction to
+        // a bill already sent are different events, so they are different
+        // endpoints. Routing both at /adjustments once left the desk unable
+        // to price extra work without freezing the ticket mid-job.
+        $builder->post('/tickets/{id}/charges', ['controller' => 'Tickets', 'action' => 'addServiceLine', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/adjustments', ['controller' => 'Tickets', 'action' => 'addAdjustment', 'prefix' => 'Api']);
+        $builder->delete('/tickets/{id}/charges/{charge_id}', ['controller' => 'Tickets', 'action' => 'removeCharge', 'prefix' => 'Api']);
         // Notes live on the same append-only trail as the status changes, so
         // the timeline reads as one story.
         $builder->get('/tickets/{id}/comments', ['controller' => 'Tickets', 'action' => 'comments', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/comments', ['controller' => 'Tickets', 'action' => 'addComment', 'prefix' => 'Api']);
 
-        // ---- companies (vendors) --------------------------------
+        // ---- companies -------------------------------------------
         // Everything that makes one company differ from the next. The
         // second company we sign should be data entry, not a release.
         $builder->get('/companies', ['controller' => 'Companies', 'action' => 'index', 'prefix' => 'Api']);
         $builder->post('/companies', ['controller' => 'Companies', 'action' => 'add', 'prefix' => 'Api']);
         $builder->get('/companies/{id}', ['controller' => 'Companies', 'action' => 'view', 'prefix' => 'Api']);
         $builder->put('/companies/{id}', ['controller' => 'Companies', 'action' => 'edit', 'prefix' => 'Api']);
+        $builder->delete('/companies/{id}', ['controller' => 'Companies', 'action' => 'delete', 'prefix' => 'Api']);
 
         // Operational dials, and the vocabulary the desk picks from.
         $builder->get('/companies/{id}/settings', ['controller' => 'Companies', 'action' => 'settings', 'prefix' => 'Api']);
@@ -146,6 +157,13 @@ return function (RouteBuilder $routes): void {
         $builder->get('/users/{id}', ['controller' => 'Users', 'action' => 'view', 'prefix' => 'Api']);
         $builder->put('/users/{id}', ['controller' => 'Users', 'action' => 'edit', 'prefix' => 'Api']);
         $builder->delete('/users/{id}', ['controller' => 'Users', 'action' => 'delete', 'prefix' => 'Api']);
+
+        // ---- technicians ------------------------------------------
+        $builder->get('/technicians', ['controller' => 'Technicians', 'action' => 'index', 'prefix' => 'Api']);
+        $builder->post('/technicians', ['controller' => 'Technicians', 'action' => 'add', 'prefix' => 'Api']);
+        $builder->get('/technicians/{id}', ['controller' => 'Technicians', 'action' => 'view', 'prefix' => 'Api']);
+        $builder->put('/technicians/{id}', ['controller' => 'Technicians', 'action' => 'edit', 'prefix' => 'Api']);
+        $builder->delete('/technicians/{id}', ['controller' => 'Technicians', 'action' => 'delete', 'prefix' => 'Api']);
 
         // ---- groups & permissions (roles) ------------------------
         $builder->get('/roles', ['controller' => 'Roles', 'action' => 'index', 'prefix' => 'Api']);
@@ -173,6 +191,11 @@ return function (RouteBuilder $routes): void {
 
         // Clause 4: live exposure against the agreed credit limit.
         $builder->get('/companies/{id}/credit-exposure', ['controller' => 'Settlement', 'action' => 'creditExposure', 'prefix' => 'Api']);
+
+        // The same question across every company, and one stage earlier:
+        // work closed but never invoiced does not appear on an invoice
+        // list at all, so it cannot be chased from one.
+        $builder->get('/receivables', ['controller' => 'Settlement', 'action' => 'receivables', 'prefix' => 'Api']);
 
         // ---- settlement -----------------------------------------
         // Both runs copy charge lines frozen at closure. Neither prices
@@ -236,15 +259,6 @@ return function (RouteBuilder $routes): void {
         $builder->post('/spares/defective-credits', ['controller' => 'Spares', 'action' => 'recordDefectiveCredit', 'prefix' => 'Api']);
 
         $builder->get('/spares/{id}/movements', ['controller' => 'Spares', 'action' => 'movements', 'prefix' => 'Api']);
-
-        // ---- invoicing & payouts -------------------------------
-        $builder->get('/invoices', ['controller' => 'Invoices', 'action' => 'index', 'prefix' => 'Api']);
-        $builder->get('/invoices/{id}', ['controller' => 'Invoices', 'action' => 'view', 'prefix' => 'Api']);
-        $builder->post('/invoices/generate', ['controller' => 'Invoices', 'action' => 'generate', 'prefix' => 'Api']);
-
-        $builder->get('/payouts', ['controller' => 'Payouts', 'action' => 'index', 'prefix' => 'Api']);
-        $builder->get('/payouts/{id}', ['controller' => 'Payouts', 'action' => 'view', 'prefix' => 'Api']);
-        $builder->post('/payouts/generate', ['controller' => 'Payouts', 'action' => 'generate', 'prefix' => 'Api']);
 
         // ---- pricing --------------------------------------------
         // Same engine that produces the frozen charge lines at closure, so

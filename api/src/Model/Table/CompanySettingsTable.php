@@ -9,38 +9,38 @@ use Cake\ORM\Table;
 use Cake\Validation\Validator;
 
 /**
- * VendorSettings Model
+ * CompanySettings Model
  *
  * The storage half of per-company settings. The meaning half — what a key
  * is, what type it holds, what it defaults to — lives in SettingCatalog,
  * and reads should go through CompanyConfigRepository rather than here so
  * the platform/company layering is applied.
  *
- * @property \App\Model\Table\VendorsTable&\Cake\ORM\Association\BelongsTo $Vendors
+ * @property \App\Model\Table\CompaniesTable&\Cake\ORM\Association\BelongsTo $Companies
  *
- * @method \App\Model\Entity\VendorSetting newEmptyEntity()
- * @method \App\Model\Entity\VendorSetting newEntity(array $data, array $options = [])
- * @method \App\Model\Entity\VendorSetting get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
- * @method \App\Model\Entity\VendorSetting patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
- * @method \App\Model\Entity\VendorSetting|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
- * @method \App\Model\Entity\VendorSetting saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method \App\Model\Entity\CompanySetting newEmptyEntity()
+ * @method \App\Model\Entity\CompanySetting newEntity(array $data, array $options = [])
+ * @method \App\Model\Entity\CompanySetting get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
+ * @method \App\Model\Entity\CompanySetting patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
+ * @method \App\Model\Entity\CompanySetting|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method \App\Model\Entity\CompanySetting saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
  *
  * @mixin \Cake\ORM\Behavior\TimestampBehavior
  */
-class VendorSettingsTable extends Table
+class CompanySettingsTable extends Table
 {
     public function initialize(array $config): void
     {
         parent::initialize($config);
 
-        $this->setTable('vendor_settings');
+        $this->setTable('company_settings');
         $this->setDisplayField('setting_key');
         $this->setPrimaryKey('id');
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             // Null is the platform default, not a missing company.
             'joinType' => 'LEFT',
         ]);
@@ -48,7 +48,7 @@ class VendorSettingsTable extends Table
 
     public function validationDefault(Validator $validator): Validator
     {
-        $validator->allowEmptyString('vendor_id');
+        $validator->allowEmptyString('company_id');
 
         $validator
             ->scalar('setting_key')
@@ -97,7 +97,7 @@ class VendorSettingsTable extends Table
     {
         $rules->add(
             $rules->isUnique(
-                ['vendor_id', 'setting_key'],
+                ['company_id', 'setting_key'],
                 // Mirrors the COALESCE index: without this, several
                 // platform-default rows for one key would all be accepted.
                 ['allowMultipleNulls' => false],
@@ -109,7 +109,7 @@ class VendorSettingsTable extends Table
             ],
         );
 
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
 
         return $rules;
     }

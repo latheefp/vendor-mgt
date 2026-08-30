@@ -17,8 +17,8 @@ use Cake\ORM\Entity;
  * @property int|null $paused_minutes
  * @property int|null $started_by_user_id
  * @property int|null $ended_by_user_id
- * @property \Cake\I18n\DateTime|null $vendor_notified_at
- * @property string|null $vendor_notification_message_id
+ * @property \Cake\I18n\DateTime|null $company_notified_at
+ * @property string|null $company_notification_message_id
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime $modified
  * @property int|null $hold_reason_id
@@ -48,8 +48,8 @@ class TicketHold extends Entity
         'paused_minutes' => true,
         'started_by_user_id' => true,
         'ended_by_user_id' => true,
-        'vendor_notified_at' => true,
-        'vendor_notification_message_id' => true,
+        'company_notified_at' => true,
+        'company_notification_message_id' => true,
         'created' => true,
         'modified' => true,
         'hold_reason_id' => true,

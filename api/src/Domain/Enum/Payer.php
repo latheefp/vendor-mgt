@@ -7,7 +7,7 @@ namespace App\Domain\Enum;
  * Who physically hands over the money for a rate card line.
  *
  * On the Dianora card installation and in-warranty service are billed to
- * the vendor, while out-of-warranty service is collected from the
+ * the company, while out-of-warranty service is collected from the
  * customer at the door. The difference drives which ledger the base line
  * lands on, whether a royalty is due, and whether a cash-collection
  * record and its deposit reconciliation are required before the ticket
@@ -15,13 +15,13 @@ namespace App\Domain\Enum;
  */
 enum Payer: string
 {
-    case Vendor = 'vendor';
+    case Company = 'company';
     case Customer = 'customer';
 
     public function ledger(): Ledger
     {
         return match ($this) {
-            self::Vendor => Ledger::VendorReceivable,
+            self::Company => Ledger::CompanyReceivable,
             self::Customer => Ledger::CustomerCollection,
         };
     }
@@ -38,7 +38,7 @@ enum Payer: string
     public function label(): string
     {
         return match ($this) {
-            self::Vendor => 'Vendor',
+            self::Company => 'Company',
             self::Customer => 'Customer',
         };
     }

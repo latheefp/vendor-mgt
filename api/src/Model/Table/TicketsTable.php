@@ -11,8 +11,8 @@ use Cake\Validation\Validator;
 /**
  * Tickets Model
  *
- * @property \App\Model\Table\VendorsTable&\Cake\ORM\Association\BelongsTo $Vendors
- * @property \App\Model\Table\VendorAgreementsTable&\Cake\ORM\Association\BelongsTo $VendorAgreements
+ * @property \App\Model\Table\CompaniesTable&\Cake\ORM\Association\BelongsTo $Companies
+ * @property \App\Model\Table\CompanyAgreementsTable&\Cake\ORM\Association\BelongsTo $CompanyAgreements
  * @property \App\Model\Table\RateCardsTable&\Cake\ORM\Association\BelongsTo $RateCards
  * @property \App\Model\Table\ServiceCentersTable&\Cake\ORM\Association\BelongsTo $ServiceCenters
  * @property \App\Model\Table\CustomersTable&\Cake\ORM\Association\BelongsTo $Customers
@@ -33,7 +33,7 @@ use Cake\Validation\Validator;
  * @property \App\Model\Table\TicketEventsTable&\Cake\ORM\Association\HasMany $TicketEvents
  * @property \App\Model\Table\TicketHoldsTable&\Cake\ORM\Association\HasMany $TicketHolds
  * @property \App\Model\Table\TicketSparesTable&\Cake\ORM\Association\HasMany $TicketSpares
- * @property \App\Model\Table\VendorInvoiceLinesTable&\Cake\ORM\Association\HasMany $VendorInvoiceLines
+ * @property \App\Model\Table\CompanyInvoiceLinesTable&\Cake\ORM\Association\HasMany $CompanyInvoiceLines
  *
  * @method \App\Model\Entity\Ticket newEmptyEntity()
  * @method \App\Model\Entity\Ticket newEntity(array $data, array $options = [])
@@ -69,12 +69,12 @@ class TicketsTable extends Table
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             'joinType' => 'INNER',
         ]);
-        $this->belongsTo('VendorAgreements', [
-            'foreignKey' => 'vendor_agreement_id',
+        $this->belongsTo('CompanyAgreements', [
+            'foreignKey' => 'company_agreement_id',
         ]);
         $this->belongsTo('RateCards', [
             'foreignKey' => 'rate_card_id',
@@ -143,7 +143,7 @@ class TicketsTable extends Table
         $this->hasMany('TicketSpares', [
             'foreignKey' => 'ticket_id',
         ]);
-        $this->hasMany('VendorInvoiceLines', [
+        $this->hasMany('CompanyInvoiceLines', [
             'foreignKey' => 'ticket_id',
         ]);
     }
@@ -164,15 +164,15 @@ class TicketsTable extends Table
             ->add('ticket_no', 'unique', ['rule' => 'validateUnique', 'provider' => 'table']);
 
         $validator
-            ->notEmptyString('vendor_id');
+            ->notEmptyString('company_id');
 
         $validator
-            ->scalar('vendor_ticket_ref')
-            ->maxLength('vendor_ticket_ref', 64)
-            ->allowEmptyString('vendor_ticket_ref');
+            ->scalar('company_ticket_ref')
+            ->maxLength('company_ticket_ref', 64)
+            ->allowEmptyString('company_ticket_ref');
 
         $validator
-            ->allowEmptyString('vendor_agreement_id');
+            ->allowEmptyString('company_agreement_id');
 
         $validator
             ->allowEmptyString('rate_card_id');
@@ -349,21 +349,21 @@ class TicketsTable extends Table
             ->notEmptyString('reopened_count');
 
         $validator
-            ->dateTime('vendor_submitted_at')
-            ->allowEmptyDateTime('vendor_submitted_at');
+            ->dateTime('company_submitted_at')
+            ->allowEmptyDateTime('company_submitted_at');
 
         $validator
-            ->dateTime('vendor_approved_at')
-            ->allowEmptyDateTime('vendor_approved_at');
+            ->dateTime('company_approved_at')
+            ->allowEmptyDateTime('company_approved_at');
 
         $validator
-            ->dateTime('vendor_rejected_at')
-            ->allowEmptyDateTime('vendor_rejected_at');
+            ->dateTime('company_rejected_at')
+            ->allowEmptyDateTime('company_rejected_at');
 
         $validator
-            ->scalar('vendor_rejection_reason')
-            ->maxLength('vendor_rejection_reason', 255)
-            ->allowEmptyString('vendor_rejection_reason');
+            ->scalar('company_rejection_reason')
+            ->maxLength('company_rejection_reason', 255)
+            ->allowEmptyString('company_rejection_reason');
 
         $validator
             ->dateTime('charges_computed_at')
@@ -400,14 +400,14 @@ class TicketsTable extends Table
             ->allowEmptyString('resolution_id');
 
         $validator
-            ->scalar('vendor_branch_label')
-            ->maxLength('vendor_branch_label', 128)
-            ->allowEmptyString('vendor_branch_label');
+            ->scalar('company_branch_label')
+            ->maxLength('company_branch_label', 128)
+            ->allowEmptyString('company_branch_label');
 
         $validator
-            ->scalar('vendor_complaint_type')
-            ->maxLength('vendor_complaint_type', 96)
-            ->allowEmptyString('vendor_complaint_type');
+            ->scalar('company_complaint_type')
+            ->maxLength('company_complaint_type', 96)
+            ->allowEmptyString('company_complaint_type');
 
         $validator
             ->boolean('video_proof_required')
@@ -418,7 +418,7 @@ class TicketsTable extends Table
             ->allowEmptyDateTime('video_proof_received_at');
 
         $validator
-            ->allowEmptyString('vendor_payload');
+            ->allowEmptyString('company_payload');
 
         return $validator;
     }
@@ -433,9 +433,9 @@ class TicketsTable extends Table
     public function buildRules(RulesChecker $rules): RulesChecker
     {
         $rules->add($rules->isUnique(['ticket_no']), ['errorField' => 'ticket_no']);
-        $rules->add($rules->isUnique(['vendor_id', 'vendor_ticket_ref'], ['allowMultipleNulls' => true]), ['errorField' => 'vendor_id', 'message' => __('This combination of vendor_id and vendor_ticket_ref already exists')]);
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
-        $rules->add($rules->existsIn(['vendor_agreement_id'], 'VendorAgreements'), ['errorField' => 'vendor_agreement_id']);
+        $rules->add($rules->isUnique(['company_id', 'company_ticket_ref'], ['allowMultipleNulls' => true]), ['errorField' => 'company_id', 'message' => __('This combination of company_id and company_ticket_ref already exists')]);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
+        $rules->add($rules->existsIn(['company_agreement_id'], 'CompanyAgreements'), ['errorField' => 'company_agreement_id']);
         $rules->add($rules->existsIn(['rate_card_id'], 'RateCards'), ['errorField' => 'rate_card_id']);
         $rules->add($rules->existsIn(['service_center_id'], 'ServiceCenters'), ['errorField' => 'service_center_id']);
         $rules->add($rules->existsIn(['customer_id'], 'Customers'), ['errorField' => 'customer_id']);

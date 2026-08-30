@@ -53,7 +53,7 @@ class ProductCategoriesTable extends Table
 
         $this->addBehavior('Timestamp');
 
-        // vendor_id null = shared baseline; set = this company's own entry.
+        // company_id null = shared baseline; set = this company's own entry.
         $this->addCompanyScope();
 
         $this->hasMany('Products', [
@@ -82,7 +82,7 @@ class ProductCategoriesTable extends Table
     public function validationDefault(Validator $validator): Validator
     {
         // null is meaningful here: it marks the shared baseline row.
-        $validator->allowEmptyString('vendor_id');
+        $validator->allowEmptyString('company_id');
         $validator->scalar('override_note')->maxLength('override_note', 255)
             ->allowEmptyString('override_note');
 
@@ -94,7 +94,7 @@ class ProductCategoriesTable extends Table
             ->add('code', 'unique', [
                 // Scoped: a company's override deliberately reuses the
                 // code of the shared row it shadows.
-                'rule' => ['validateUnique', ['scope' => ['vendor_id'], 'allowMultipleNulls' => false]],
+                'rule' => ['validateUnique', ['scope' => ['company_id'], 'allowMultipleNulls' => false]],
                 'provider' => 'table',
                 'message' => 'This code is already used by this company.',
             ]);

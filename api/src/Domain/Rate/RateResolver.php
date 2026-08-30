@@ -40,7 +40,7 @@ final readonly class RateResolver
         if (!$context->warrantyScope->isRateable()) {
             throw new UnrateableTicketException(
                 'Warranty scope is still unknown, so it is not possible to tell '
-                . 'whether the vendor or the customer should be billed. Confirm '
+                . 'whether the company or the customer should be billed. Confirm '
                 . 'the warranty status against the serial number first.',
                 $context,
             );

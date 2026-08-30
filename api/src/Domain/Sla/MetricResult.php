@@ -9,7 +9,7 @@ use DateTimeImmutable;
 /**
  * How one SLA clock actually ran.
  *
- * Both the raw and the net elapsed time are kept. The vendor's own system
+ * Both the raw and the net elapsed time are kept. The company's own system
  * will show the raw figure, so when we claim an incentive on the net one
  * we need to be able to show the difference and the holds that justify it
  * in the same breath.

@@ -28,7 +28,7 @@ final class RateNotFoundException extends RuntimeException
     ) {
         parent::__construct(sprintf(
             'No active rate card item matches %s%s. %d item(s) were considered. '
-            . 'This is usually a gap in the vendor agreement rather than a bug — '
+            . 'This is usually a gap in the company agreement rather than a bug — '
             . 'get the rate confirmed by email and add it to the rate card.',
             $context->describe(),
             $rateCardId !== null ? sprintf(' on rate card #%d', $rateCardId) : '',

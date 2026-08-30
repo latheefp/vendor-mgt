@@ -5,6 +5,7 @@ namespace App\Service;
 
 use App\Domain\Enum\ChargeLineType;
 use App\Domain\Enum\Ledger;
+use App\Domain\Enum\PayoutMethod;
 use App\Domain\Money;
 use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
@@ -44,12 +45,12 @@ class SettlementService
      *
      * @return array<string, mixed>
      */
-    public function previewInvoice(int $vendorId, string $periodStart, string $periodEnd): array
+    public function previewInvoice(int $companyId, string $periodStart, string $periodEnd): array
     {
-        $lines = $this->claimableVendorLines($vendorId, $periodStart, $periodEnd);
+        $lines = $this->claimableCompanyLines($companyId, $periodStart, $periodEnd);
 
         return [
-            'vendor_id' => $vendorId,
+            'company_id' => $companyId,
             'period_start' => $periodStart,
             'period_end' => $periodEnd,
             'totals' => $this->summariseInvoiceLines($lines),
@@ -65,17 +66,17 @@ class SettlementService
      *        |array{ok: false, errors: array<string, list<string>>}
      */
     public function generateInvoice(
-        int $vendorId,
+        int $companyId,
         string $periodStart,
         string $periodEnd,
         ?int $actorUserId = null,
     ): array {
-        $invoices = $this->fetchTable('VendorInvoices');
+        $invoices = $this->fetchTable('CompanyInvoices');
         $connection = $invoices->getConnection();
 
         return $connection->transactional(
-            function () use ($invoices, $vendorId, $periodStart, $periodEnd, $actorUserId): array {
-                $lines = $this->claimableVendorLines($vendorId, $periodStart, $periodEnd);
+            function () use ($invoices, $companyId, $periodStart, $periodEnd, $actorUserId): array {
+                $lines = $this->claimableCompanyLines($companyId, $periodStart, $periodEnd);
 
                 if ($lines === []) {
                     return ['ok' => false, 'errors' => ['period' => [
@@ -88,16 +89,16 @@ class SettlementService
                 $agreementId = null;
                 $cycleDay = 10;
                 try {
-                    $terms = $this->rates->agreementTerms($vendorId, $periodEnd);
+                    $terms = $this->rates->agreementTerms($companyId, $periodEnd);
                     $agreementId = $terms->id;
                 } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
                     // Invoicing a period whose agreement has since lapsed is
                     // legitimate — the work was done under it.
                 }
 
-                $agreementRow = $this->fetchTable('VendorAgreements')->find()
+                $agreementRow = $this->fetchTable('CompanyAgreements')->find()
                     ->select(['invoice_cycle_day'])
-                    ->where(['vendor_id' => $vendorId])
+                    ->where(['company_id' => $companyId])
                     ->orderByDesc('effective_from')
                     ->disableHydration()
                     ->first();
@@ -108,11 +109,11 @@ class SettlementService
                     $cycleDay = (int)$agreementRow['invoice_cycle_day'];
                 }
 
-                $invoiceNo = $this->nextInvoiceNo($vendorId, $periodEnd);
+                $invoiceNo = $this->nextInvoiceNo($companyId, $periodEnd);
 
                 $invoice = $invoices->newEntity([
-                    'vendor_id' => $vendorId,
-                    'vendor_agreement_id' => $agreementId,
+                    'company_id' => $companyId,
+                    'company_agreement_id' => $agreementId,
                     'invoice_no' => $invoiceNo,
                     'period_start' => $periodStart,
                     'period_end' => $periodEnd,
@@ -132,13 +133,13 @@ class SettlementService
 
                 $invoices->saveOrFail($invoice);
 
-                $invoiceLines = $this->fetchTable('VendorInvoiceLines');
+                $invoiceLines = $this->fetchTable('CompanyInvoiceLines');
                 $chargeIds = [];
                 $sort = 0;
 
                 foreach ($lines as $line) {
                     $invoiceLines->saveOrFail($invoiceLines->newEntity([
-                        'vendor_invoice_id' => $invoice->id,
+                        'company_invoice_id' => $invoice->id,
                         'ticket_charge_id' => (int)$line['id'],
                         'ticket_id' => (int)$line['ticket_id'],
                         // Copied, not joined. The header totals are re-derived
@@ -186,7 +187,7 @@ class SettlementService
      *
      * @return list<array<string, mixed>>
      */
-    private function claimableVendorLines(int $vendorId, string $periodStart, string $periodEnd): array
+    private function claimableCompanyLines(int $companyId, string $periodStart, string $periodEnd): array
     {
         return $this->fetchTable('TicketCharges')->find()
             ->select([
@@ -206,7 +207,7 @@ class SettlementService
                 'conditions' => 'Tickets.id = TicketCharges.ticket_id',
             ]])
             ->where([
-                'Tickets.vendor_id' => $vendorId,
+                'Tickets.company_id' => $companyId,
                 'Tickets.closed_at >=' => $periodStart . ' 00:00:00',
                 'Tickets.closed_at <=' => $periodEnd . ' 23:59:59',
                 'TicketCharges.is_frozen' => true,
@@ -215,7 +216,7 @@ class SettlementService
                 // document: what they owe us, and the royalty we owe back.
                 // Netting them is what makes the total the amount actually
                 // due, which is what clause 5 settles on.
-                'TicketCharges.ledger IN' => ['vendor_receivable', 'vendor_payable'],
+                'TicketCharges.ledger IN' => ['company_receivable', 'company_payable'],
             ])
             ->orderByAsc('Tickets.closed_at')
             ->orderByAsc('TicketCharges.id')
@@ -252,7 +253,7 @@ class SettlementService
                 'sla_penalty' => $totals['sla_penalty_paise'] += $amount,
                 'travel' => $totals['travel_paise'] += $amount,
                 'spare_cost', 'spare_margin' => $totals['spare_paise'] += $amount,
-                'vendor_royalty' => $totals['royalty_paise'] += $amount,
+                'company_royalty' => $totals['royalty_paise'] += $amount,
                 default => $totals['subtotal_paise'] += $amount,
             };
         }
@@ -283,37 +284,37 @@ class SettlementService
      */
     public function invoiceDetail(int $invoiceId): ?array
     {
-        $invoice = $this->fetchTable('VendorInvoices')->find()
-            ->contain(['Vendors'])
-            ->where(['VendorInvoices.id' => $invoiceId])
+        $invoice = $this->fetchTable('CompanyInvoices')->find()
+            ->contain(['Companies'])
+            ->where(['CompanyInvoices.id' => $invoiceId])
             ->first();
 
         if ($invoice === null) {
             return null;
         }
 
-        $rows = $this->fetchTable('VendorInvoiceLines')->find()
+        $rows = $this->fetchTable('CompanyInvoiceLines')->find()
             ->select([
-                'VendorInvoiceLines.id',
-                'VendorInvoiceLines.ticket_id',
-                'VendorInvoiceLines.ticket_charge_id',
-                'VendorInvoiceLines.line_type',
-                'VendorInvoiceLines.ledger',
-                'VendorInvoiceLines.description',
-                'VendorInvoiceLines.quantity',
-                'VendorInvoiceLines.unit_amount_paise',
-                'VendorInvoiceLines.amount_paise',
-                'VendorInvoiceLines.original_amount_paise',
-                'VendorInvoiceLines.override_reason',
-                'VendorInvoiceLines.overridden_at',
+                'CompanyInvoiceLines.id',
+                'CompanyInvoiceLines.ticket_id',
+                'CompanyInvoiceLines.ticket_charge_id',
+                'CompanyInvoiceLines.line_type',
+                'CompanyInvoiceLines.ledger',
+                'CompanyInvoiceLines.description',
+                'CompanyInvoiceLines.quantity',
+                'CompanyInvoiceLines.unit_amount_paise',
+                'CompanyInvoiceLines.amount_paise',
+                'CompanyInvoiceLines.original_amount_paise',
+                'CompanyInvoiceLines.override_reason',
+                'CompanyInvoiceLines.overridden_at',
                 'ticket_no' => 'Tickets.ticket_no',
                 'overridden_by' => 'OverriddenByUsers.name',
             ])
             ->leftJoinWith('Tickets')
             ->leftJoinWith('OverriddenByUsers')
-            ->where(['VendorInvoiceLines.vendor_invoice_id' => $invoiceId])
-            ->orderByAsc('VendorInvoiceLines.sort_order')
-            ->orderByAsc('VendorInvoiceLines.id')
+            ->where(['CompanyInvoiceLines.company_invoice_id' => $invoiceId])
+            ->orderByAsc('CompanyInvoiceLines.sort_order')
+            ->orderByAsc('CompanyInvoiceLines.id')
             ->disableHydration()
             ->all()
             ->toList();
@@ -332,10 +333,10 @@ class SettlementService
             'id' => (int)$invoice->id,
             'invoice_no' => $invoice->invoice_no,
             'status' => $invoice->status,
-            'vendor' => $invoice->vendor === null ? null : [
-                'id' => (int)$invoice->vendor->id,
-                'code' => $invoice->vendor->code,
-                'name' => $invoice->vendor->name,
+            'company' => $invoice->company === null ? null : [
+                'id' => (int)$invoice->company->id,
+                'code' => $invoice->company->code,
+                'name' => $invoice->company->name,
             ],
             'period_start' => $invoice->period_start->format('Y-m-d'),
             'period_end' => $invoice->period_end->format('Y-m-d'),
@@ -378,7 +379,7 @@ class SettlementService
         string $reason,
         ?int $actorUserId = null,
     ): array {
-        $lines = $this->fetchTable('VendorInvoiceLines');
+        $lines = $this->fetchTable('CompanyInvoiceLines');
 
         $guard = $this->guardInvoiceLine($invoiceId, $lineId);
         if ($guard !== null) {
@@ -435,7 +436,7 @@ class SettlementService
             return $guard;
         }
 
-        $lines = $this->fetchTable('VendorInvoiceLines');
+        $lines = $this->fetchTable('CompanyInvoiceLines');
         $line = $lines->get($lineId);
 
         if ($line->original_amount_paise !== null) {
@@ -459,8 +460,8 @@ class SettlementService
      */
     private function guardInvoiceLine(int $invoiceId, int $lineId): ?array
     {
-        $line = $this->fetchTable('VendorInvoiceLines')->find()
-            ->where(['id' => $lineId, 'vendor_invoice_id' => $invoiceId])
+        $line = $this->fetchTable('CompanyInvoiceLines')->find()
+            ->where(['id' => $lineId, 'company_invoice_id' => $invoiceId])
             ->first();
 
         if ($line === null) {
@@ -471,7 +472,7 @@ class SettlementService
             ]]];
         }
 
-        $invoice = $this->fetchTable('VendorInvoices')->get($invoiceId);
+        $invoice = $this->fetchTable('CompanyInvoices')->get($invoiceId);
 
         if ($invoice->status !== 'draft') {
             return ['ok' => false, 'code' => 'invalid_state', 'errors' => ['invoice' => [sprintf(
@@ -493,16 +494,16 @@ class SettlementService
      */
     private function recalculateInvoice(int $invoiceId): void
     {
-        $rows = $this->fetchTable('VendorInvoiceLines')->find()
+        $rows = $this->fetchTable('CompanyInvoiceLines')->find()
             ->select(['line_type', 'amount_paise', 'ticket_id'])
-            ->where(['vendor_invoice_id' => $invoiceId])
+            ->where(['company_invoice_id' => $invoiceId])
             ->disableHydration()
             ->all()
             ->toList();
 
         $totals = $this->summariseInvoiceLines($rows);
 
-        $invoices = $this->fetchTable('VendorInvoices');
+        $invoices = $this->fetchTable('CompanyInvoices');
         $invoice = $invoices->get($invoiceId);
 
         foreach ($totals as $column => $value) {
@@ -535,7 +536,7 @@ class SettlementService
             ['key' => 'sla_penalty', 'label' => 'SLA deductions', 'paise' => $totals['sla_penalty_paise'], 'sign' => 1],
             ['key' => 'travel', 'label' => 'Travel', 'paise' => $totals['travel_paise'], 'sign' => 1],
             ['key' => 'spare', 'label' => 'Spare parts', 'paise' => $totals['spare_paise'], 'sign' => 1],
-            ['key' => 'royalty', 'label' => 'Vendor royalty', 'paise' => $totals['royalty_paise'], 'sign' => -1],
+            ['key' => 'royalty', 'label' => 'Company royalty', 'paise' => $totals['royalty_paise'], 'sign' => -1],
         ];
 
         return array_map(
@@ -641,7 +642,7 @@ class SettlementService
      */
     public function markInvoiceSent(int $invoiceId, string $email, ?string $messageId = null): array
     {
-        $invoices = $this->fetchTable('VendorInvoices');
+        $invoices = $this->fetchTable('CompanyInvoices');
         $invoice = $invoices->get($invoiceId);
 
         if ($invoice->status !== 'draft') {
@@ -666,7 +667,7 @@ class SettlementService
      */
     public function recordInvoicePayment(int $invoiceId, int $amountPaise, ?string $reference = null): array
     {
-        $invoices = $this->fetchTable('VendorInvoices');
+        $invoices = $this->fetchTable('CompanyInvoices');
         $invoice = $invoices->get($invoiceId);
 
         $paid = (int)$invoice->paid_paise + $amountPaise;
@@ -690,9 +691,9 @@ class SettlementService
             $this->fetchTable('TicketCharges')->updateAll(
                 ['settlement_status' => 'paid'],
                 [
-                    'id IN' => $this->fetchTable('VendorInvoiceLines')->find()
+                    'id IN' => $this->fetchTable('CompanyInvoiceLines')->find()
                         ->select(['ticket_charge_id'])
-                        ->where(['vendor_invoice_id' => $invoiceId, 'ticket_charge_id IS NOT' => null]),
+                        ->where(['company_invoice_id' => $invoiceId, 'ticket_charge_id IS NOT' => null]),
                 ],
             );
         }
@@ -709,12 +710,12 @@ class SettlementService
      *
      * @return array<string, mixed>
      */
-    public function creditExposure(int $vendorId): array
+    public function creditExposure(int $companyId): array
     {
-        $row = $this->fetchTable('VendorInvoices')->find()
+        $row = $this->fetchTable('CompanyInvoices')->find()
             ->select(['outstanding' => 'SUM(total_paise - paid_paise)'])
             ->where([
-                'vendor_id' => $vendorId,
+                'company_id' => $companyId,
                 'status IN' => ['sent', 'partially_paid', 'disputed'],
             ])
             ->disableHydration()
@@ -723,7 +724,7 @@ class SettlementService
         $outstanding = (int)($row['outstanding'] ?? 0);
 
         try {
-            $limit = $this->rates->agreementTerms($vendorId)->creditLimitOrDefault();
+            $limit = $this->rates->agreementTerms($companyId)->creditLimitOrDefault();
         } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
             $limit = Money::zero();
         }
@@ -734,6 +735,255 @@ class SettlementService
             'headroom_paise' => $limit->paise - $outstanding,
             'over_limit' => $limit->paise > 0 && $outstanding > $limit->paise,
         ];
+    }
+
+    // -----------------------------------------------------------------
+    // receivables
+    // -----------------------------------------------------------------
+
+    /**
+     * What every company owes us, and how far along the pipeline it is.
+     *
+     * Four stages, because "what are we owed" has four different answers
+     * depending on who is asking and none of them is wrong:
+     *
+     *   unbilled  work closed and priced, sitting in `ticket_charges` with
+     *             nothing claiming it. Real money, but no invoice exists,
+     *             so the company has never been told about it. This is the
+     *             bucket that goes unnoticed — a cycle nobody ran leaves it
+     *             growing silently, and it is invisible on an invoice list.
+     *   draft     on an invoice we have raised but not served. Ours to
+     *             restate; not yet a claim.
+     *   awaiting  served and unpaid. This is the only bucket that is
+     *             legally a debt, and the only one clause 4's credit limit
+     *             is measured against.
+     *   received  what has actually landed.
+     *
+     * Summing them into one "receivable" figure would hide exactly the
+     * distinction that decides what to do next: chase the company, or
+     * chase ourselves.
+     *
+     * @param string|null $asOf Ageing reference date, defaults to today.
+     * @return array<string, mixed>
+     */
+    public function receivables(?string $asOf = null): array
+    {
+        $asOf = $asOf ?? DateTime::now()->format('Y-m-d');
+        $asOfTs = strtotime($asOf . ' 00:00:00');
+
+        $companies = $this->fetchTable('Companies')->find()
+            ->select(['id', 'code', 'name', 'accounts_email', 'is_active'])
+            ->where(['is_active' => true])
+            ->orderByAsc('name')
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        $unbilled = $this->unbilledByCompany();
+        $invoiceRows = $this->invoiceRowsForAgeing();
+
+        $out = [];
+        foreach ($companies as $company) {
+            $companyId = (int)$company['id'];
+
+            $draft = 0;
+            $awaiting = 0;
+            $overdue = 0;
+            $received = 0;
+            $invoiceCount = 0;
+            $openInvoiceCount = 0;
+            $oldestDue = null;
+            $ageing = ['not_due' => 0, 'd1_30' => 0, 'd31_60' => 0, 'd60_plus' => 0];
+
+            foreach ($invoiceRows[$companyId] ?? [] as $row) {
+                $invoiceCount++;
+                $received += (int)$row['paid_paise'];
+
+                $balance = (int)$row['total_paise'] - (int)$row['paid_paise'];
+
+                if ($row['status'] === 'draft') {
+                    $draft += $balance;
+
+                    continue;
+                }
+
+                // A settled invoice contributes only to `received`. Its
+                // balance is zero anyway, but a rounding-up part payment
+                // could make it negative and quietly reduce the total owed.
+                if (!in_array($row['status'], ['sent', 'partially_paid', 'disputed'], true)) {
+                    continue;
+                }
+
+                $awaiting += $balance;
+                $openInvoiceCount++;
+
+                $dueAt = $row['due_at'];
+                if ($dueAt === null) {
+                    $ageing['not_due'] += $balance;
+
+                    continue;
+                }
+
+                $dueTs = strtotime($dueAt->format('Y-m-d') . ' 00:00:00');
+                $daysLate = (int)floor(($asOfTs - $dueTs) / 86400);
+
+                if ($daysLate <= 0) {
+                    $ageing['not_due'] += $balance;
+                } else {
+                    $overdue += $balance;
+                    $bucket = $daysLate <= 30 ? 'd1_30' : ($daysLate <= 60 ? 'd31_60' : 'd60_plus');
+                    $ageing[$bucket] += $balance;
+
+                    if ($oldestDue === null || $dueTs < strtotime($oldestDue . ' 00:00:00')) {
+                        $oldestDue = $dueAt->format('Y-m-d');
+                    }
+                }
+            }
+
+            $unbilledAmount = $unbilled[$companyId]['amount'] ?? 0;
+            $unbilledTickets = $unbilled[$companyId]['tickets'] ?? 0;
+
+            try {
+                $limit = $this->rates->agreementTerms($companyId)->creditLimitOrDefault();
+            } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
+                $limit = Money::zero();
+            }
+
+            $out[] = [
+                'company' => [
+                    'id' => $companyId,
+                    'code' => $company['code'],
+                    'name' => $company['name'],
+                    'accounts_email' => $company['accounts_email'],
+                ],
+                'unbilled' => Money::fromPaise($unbilledAmount)->jsonSerialize(),
+                'unbilled_ticket_count' => $unbilledTickets,
+                'draft' => Money::fromPaise($draft)->jsonSerialize(),
+                'awaiting' => Money::fromPaise($awaiting)->jsonSerialize(),
+                'overdue' => Money::fromPaise($overdue)->jsonSerialize(),
+                'received' => Money::fromPaise($received)->jsonSerialize(),
+                // Everything earned and not yet in the bank, whatever stage
+                // it has reached. The single number for "what are we owed".
+                'total_due' => Money::fromPaise($unbilledAmount + $draft + $awaiting)->jsonSerialize(),
+                'ageing' => [
+                    'not_due' => Money::fromPaise($ageing['not_due'])->jsonSerialize(),
+                    'd1_30' => Money::fromPaise($ageing['d1_30'])->jsonSerialize(),
+                    'd31_60' => Money::fromPaise($ageing['d31_60'])->jsonSerialize(),
+                    'd60_plus' => Money::fromPaise($ageing['d60_plus'])->jsonSerialize(),
+                ],
+                'oldest_overdue_due_at' => $oldestDue,
+                'invoice_count' => $invoiceCount,
+                'open_invoice_count' => $openInvoiceCount,
+                // Clause 4 caps served, unpaid claims — not work we have
+                // simply not got round to invoicing yet.
+                'credit_limit' => $limit->jsonSerialize(),
+                'headroom' => Money::fromPaise($limit->paise - $awaiting)->jsonSerialize(),
+                'over_limit' => $limit->paise > 0 && $awaiting > $limit->paise,
+            ];
+        }
+
+        return [
+            'as_of' => $asOf,
+            'companies' => $out,
+            'totals' => $this->sumReceivables($out),
+        ];
+    }
+
+    /**
+     * Frozen, unclaimed company-side charge lines, per company.
+     *
+     * Not period-scoped: the point of this figure is everything that has
+     * ever been closed and never invoiced, which is precisely the work a
+     * period-scoped run would have skipped.
+     *
+     * @return array<int, array{amount: int, tickets: int}>
+     */
+    private function unbilledByCompany(): array
+    {
+        $rows = $this->fetchTable('TicketCharges')->find()
+            ->select([
+                'company_id' => 'Tickets.company_id',
+                // The royalty sits on the payable ledger as a positive
+                // magnitude — money flowing back the other way — so it is
+                // subtracted here exactly as summariseInvoiceLines() does.
+                // Summing raw amounts instead overstates every company by
+                // twice its royalty.
+                'amount' => 'SUM(CASE WHEN TicketCharges.ledger = \'company_payable\''
+                    . ' THEN -TicketCharges.amount_paise ELSE TicketCharges.amount_paise END)',
+                'tickets' => 'COUNT(DISTINCT TicketCharges.ticket_id)',
+            ])
+            ->join(['Tickets' => [
+                'table' => 'tickets',
+                'type' => 'INNER',
+                'conditions' => 'Tickets.id = TicketCharges.ticket_id',
+            ]])
+            ->where([
+                'TicketCharges.is_frozen' => true,
+                'TicketCharges.settlement_status' => 'open',
+                'TicketCharges.ledger IN' => ['company_receivable', 'company_payable'],
+            ])
+            ->groupBy('Tickets.company_id')
+            ->disableHydration()
+            ->all();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int)$row['company_id']] = [
+                'amount' => (int)$row['amount'],
+                'tickets' => (int)$row['tickets'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Every invoice, keyed by company, with just what ageing needs.
+     *
+     * Bucketed in PHP rather than in SQL. One company bills monthly, so
+     * this is a row per company per month — small enough that a readable
+     * loop beats a CASE expression nobody can check.
+     *
+     * @return array<int, list<array<string, mixed>>>
+     */
+    private function invoiceRowsForAgeing(): array
+    {
+        $rows = $this->fetchTable('CompanyInvoices')->find()
+            ->select(['company_id', 'status', 'total_paise', 'paid_paise', 'due_at'])
+            ->disableHydration()
+            ->all();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int)$row['company_id']][] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $companies
+     * @return array<string, mixed>
+     */
+    private function sumReceivables(array $companies): array
+    {
+        $keys = ['unbilled', 'draft', 'awaiting', 'overdue', 'received', 'total_due'];
+        $sums = array_fill_keys($keys, 0);
+        $tickets = 0;
+
+        foreach ($companies as $company) {
+            foreach ($keys as $key) {
+                $sums[$key] += (int)$company[$key]['paise'];
+            }
+            $tickets += (int)$company['unbilled_ticket_count'];
+        }
+
+        $out = ['unbilled_ticket_count' => $tickets];
+        foreach ($keys as $key) {
+            $out[$key] = Money::fromPaise($sums[$key])->jsonSerialize();
+        }
+
+        return $out;
     }
 
     // -----------------------------------------------------------------
@@ -1000,6 +1250,22 @@ class SettlementService
                 'total' => Money::fromPaise($totals['net_paise'])->jsonSerialize(),
                 'line_count' => count($rows),
             ],
+            // Paid by us, out of the margin between what the company is
+            // invoiced and what the technician earned — the company never
+            // pays a technician directly. So how the money left our hands
+            // is the only trace the payment leaves.
+            'payment' => [
+                'method' => $payout->payment_method,
+                'method_label' => $payout->payment_method === null
+                    ? null
+                    : PayoutMethod::tryFrom($payout->payment_method)?->label() ?? $payout->payment_method,
+                'reference' => $payout->payment_reference,
+                'paid_at' => $payout->paid_at?->format('Y-m-d H:i'),
+                'approved_at' => $payout->approved_at?->format('Y-m-d H:i'),
+            ],
+            'can_approve' => $payout->status === 'draft',
+            'can_pay' => $payout->status === 'approved',
+            'payment_methods' => PayoutMethod::options(),
             'tickets' => $this->groupLinesByTicket($rows),
         ];
     }
@@ -1194,16 +1460,16 @@ class SettlementService
     // numbering
     // -----------------------------------------------------------------
 
-    private function nextInvoiceNo(int $vendorId, string $periodEnd): string
+    private function nextInvoiceNo(int $companyId, string $periodEnd): string
     {
-        $vendor = $this->fetchTable('Vendors')->get($vendorId);
+        $company = $this->fetchTable('Companies')->get($companyId);
         $period = (new DateTime($periodEnd))->format('Ym');
 
-        $count = $this->fetchTable('VendorInvoices')->find()
-            ->where(['vendor_id' => $vendorId, 'invoice_no LIKE' => sprintf('INV-%s-%s-%%', $vendor->code, $period)])
+        $count = $this->fetchTable('CompanyInvoices')->find()
+            ->where(['company_id' => $companyId, 'invoice_no LIKE' => sprintf('INV-%s-%s-%%', $company->code, $period)])
             ->count();
 
-        return sprintf('INV-%s-%s-%02d', $vendor->code, $period, $count + 1);
+        return sprintf('INV-%s-%s-%02d', $company->code, $period, $count + 1);
     }
 
     private function nextPayoutNo(string $technicianCode, string $periodEnd): string

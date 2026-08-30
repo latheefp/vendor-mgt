@@ -16,7 +16,7 @@ enum PayoutModel: string
     case FlatPerJob = 'flat_per_job';
 
     /** A percentage of the service charge the job earned. */
-    case PctOfVendor = 'pct_of_vendor';
+    case PctOfCompany = 'pct_of_company';
 
     /**
      * A monthly wage. Produces no per-job base line — the salary is paid
@@ -34,7 +34,7 @@ enum PayoutModel: string
     {
         return match ($this) {
             self::FlatPerJob => 'Flat per job',
-            self::PctOfVendor => 'Percentage of service charge',
+            self::PctOfCompany => 'Percentage of service charge',
             self::Salaried => 'Salaried',
         };
     }

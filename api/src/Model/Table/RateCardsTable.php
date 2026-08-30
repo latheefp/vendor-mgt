@@ -11,8 +11,8 @@ use Cake\Validation\Validator;
 /**
  * RateCards Model
  *
- * @property \App\Model\Table\VendorsTable&\Cake\ORM\Association\BelongsTo $Vendors
- * @property \App\Model\Table\VendorAgreementsTable&\Cake\ORM\Association\BelongsTo $VendorAgreements
+ * @property \App\Model\Table\CompaniesTable&\Cake\ORM\Association\BelongsTo $Companies
+ * @property \App\Model\Table\CompanyAgreementsTable&\Cake\ORM\Association\BelongsTo $CompanyAgreements
  * @property \App\Model\Table\UsersTable&\Cake\ORM\Association\BelongsTo $PublishedByUsers
  * @property \App\Model\Table\RateCardItemsTable&\Cake\ORM\Association\HasMany $RateCardItems
  * @property \App\Model\Table\SlaRulesTable&\Cake\ORM\Association\HasMany $SlaRules
@@ -53,12 +53,12 @@ class RateCardsTable extends Table
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             'joinType' => 'INNER',
         ]);
-        $this->belongsTo('VendorAgreements', [
-            'foreignKey' => 'vendor_agreement_id',
+        $this->belongsTo('CompanyAgreements', [
+            'foreignKey' => 'company_agreement_id',
         ]);
         $this->belongsTo('PublishedByUsers', [
             'foreignKey' => 'published_by_user_id',
@@ -87,10 +87,10 @@ class RateCardsTable extends Table
     public function validationDefault(Validator $validator): Validator
     {
         $validator
-            ->notEmptyString('vendor_id');
+            ->notEmptyString('company_id');
 
         $validator
-            ->allowEmptyString('vendor_agreement_id');
+            ->allowEmptyString('company_agreement_id');
 
         $validator
             ->scalar('name')
@@ -144,9 +144,9 @@ class RateCardsTable extends Table
      */
     public function buildRules(RulesChecker $rules): RulesChecker
     {
-        $rules->add($rules->isUnique(['vendor_id', 'version']), ['errorField' => 'vendor_id', 'message' => __('This combination of vendor_id and version already exists')]);
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
-        $rules->add($rules->existsIn(['vendor_agreement_id'], 'VendorAgreements'), ['errorField' => 'vendor_agreement_id']);
+        $rules->add($rules->isUnique(['company_id', 'version']), ['errorField' => 'company_id', 'message' => __('This combination of company_id and version already exists')]);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
+        $rules->add($rules->existsIn(['company_agreement_id'], 'CompanyAgreements'), ['errorField' => 'company_agreement_id']);
         $rules->add($rules->existsIn(['published_by_user_id'], 'PublishedByUsers'), ['errorField' => 'published_by_user_id']);
 
         return $rules;

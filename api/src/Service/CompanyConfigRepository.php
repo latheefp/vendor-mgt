@@ -13,9 +13,9 @@ use Cake\ORM\Locator\LocatorAwareTrait;
  *
  * Two layers exist in the database and neither is the whole truth:
  *
- *   vendor_id IS NULL     the shared baseline — the vocabulary and defaults
+ *   company_id IS NULL     the shared baseline — the vocabulary and defaults
  *                         every company starts from
- *   vendor_id = <id>      that company's own rows, which shadow the shared
+ *   company_id = <id>      that company's own rows, which shadow the shared
  *                         ones sharing a code
  *
  * Callers want the resolved answer, not the layering, so the merge happens
@@ -57,11 +57,11 @@ class CompanyConfigRepository
      * Three layers, lowest first: the catalogue default in code, the
      * platform row with no owner, then the company's own row.
      */
-    public function settings(int $vendorId): CompanySettings
+    public function settings(int $companyId): CompanySettings
     {
-        $cached = Cache::read($this->settingsCacheKey($vendorId), self::CACHE_CONFIG);
+        $cached = Cache::read($this->settingsCacheKey($companyId), self::CACHE_CONFIG);
         if (is_array($cached)) {
-            return new CompanySettings($vendorId, $cached['values'], $cached['sources']);
+            return new CompanySettings($companyId, $cached['values'], $cached['sources']);
         }
 
         $values = [];
@@ -72,17 +72,17 @@ class CompanyConfigRepository
             $sources[$key] = 'default';
         }
 
-        $rows = $this->fetchTable('VendorSettings')->find()
-            ->select(['vendor_id', 'setting_key', 'value'])
+        $rows = $this->fetchTable('CompanySettings')->find()
+            ->select(['company_id', 'setting_key', 'value'])
             ->where([
                 'is_active' => true,
-                'OR' => ['vendor_id IS' => null, 'vendor_id' => $vendorId],
+                'OR' => ['company_id IS' => null, 'company_id' => $companyId],
             ])
             // Platform rows first so the company's own row overwrites them.
             // ORDER BY on a nullable column puts NULLs first in MySQL, which
             // is the order we want, but relying on that is the kind of thing
             // that breaks on an engine change — so it is explicit.
-            ->orderByAsc('CASE WHEN vendor_id IS NULL THEN 0 ELSE 1 END')
+            ->orderByAsc('CASE WHEN company_id IS NULL THEN 0 ELSE 1 END')
             ->disableHydration()
             ->all();
 
@@ -100,16 +100,16 @@ class CompanyConfigRepository
             $values[$key] = $definition->cast(
                 $row['value'] !== null ? (string)$row['value'] : null,
             );
-            $sources[$key] = $row['vendor_id'] === null ? 'platform' : 'company';
+            $sources[$key] = $row['company_id'] === null ? 'platform' : 'company';
         }
 
         Cache::write(
-            $this->settingsCacheKey($vendorId),
+            $this->settingsCacheKey($companyId),
             ['values' => $values, 'sources' => $sources],
             self::CACHE_CONFIG,
         );
 
-        return new CompanySettings($vendorId, $values, $sources);
+        return new CompanySettings($companyId, $values, $sources);
     }
 
     /**
@@ -117,7 +117,7 @@ class CompanyConfigRepository
      *
      * @return array{ok: true}|array{ok: false, error: string}
      */
-    public function putSetting(int $vendorId, string $key, mixed $value): array
+    public function putSetting(int $companyId, string $key, mixed $value): array
     {
         $definition = SettingCatalog::find($key);
         if ($definition === null) {
@@ -133,14 +133,14 @@ class CompanyConfigRepository
             return $serialized;
         }
 
-        $table = $this->fetchTable('VendorSettings');
+        $table = $this->fetchTable('CompanySettings');
 
         $row = $table->find()
-            ->where(['vendor_id' => $vendorId, 'setting_key' => $key])
+            ->where(['company_id' => $companyId, 'setting_key' => $key])
             ->first();
 
         $row ??= $table->newEntity([
-            'vendor_id' => $vendorId,
+            'company_id' => $companyId,
             'setting_key' => $key,
             'value_type' => $definition->type,
             'label' => $definition->label,
@@ -154,7 +154,7 @@ class CompanyConfigRepository
         $row->set('is_active', true);
 
         $table->saveOrFail($row);
-        $this->forget($vendorId);
+        $this->forget($companyId);
 
         return ['ok' => true];
     }
@@ -165,11 +165,11 @@ class CompanyConfigRepository
      * holding the current default would survive a change to that default,
      * which is the opposite of what "reset" means.
      */
-    public function clearSetting(int $vendorId, string $key): void
+    public function clearSetting(int $companyId, string $key): void
     {
-        $table = $this->fetchTable('VendorSettings');
-        $table->deleteAll(['vendor_id' => $vendorId, 'setting_key' => $key]);
-        $this->forget($vendorId);
+        $table = $this->fetchTable('CompanySettings');
+        $table->deleteAll(['company_id' => $companyId, 'setting_key' => $key]);
+        $this->forget($companyId);
     }
 
     /**
@@ -182,7 +182,7 @@ class CompanyConfigRepository
      *
      * @return list<array<string, mixed>>
      */
-    public function masterList(string $list, int $vendorId, bool $activeOnly = true): array
+    public function masterList(string $list, int $companyId, bool $activeOnly = true): array
     {
         $alias = self::MASTER_LISTS[$list] ?? null;
         if ($alias === null) {
@@ -190,7 +190,7 @@ class CompanyConfigRepository
         }
 
         $rows = $this->fetchTable($alias)->find()
-            ->where(['OR' => ['vendor_id IS' => null, 'vendor_id' => $vendorId]])
+            ->where(['OR' => ['company_id IS' => null, 'company_id' => $companyId]])
             ->orderByAsc('sort_order')
             ->orderByAsc('name')
             ->disableHydration()
@@ -200,7 +200,7 @@ class CompanyConfigRepository
         $owned = [];
         foreach ($rows as $row) {
             $code = (string)$row['code'];
-            if ($row['vendor_id'] === null) {
+            if ($row['company_id'] === null) {
                 $shared[$code] = $row;
             } else {
                 $owned[$code] = $row;
@@ -227,11 +227,11 @@ class CompanyConfigRepository
      *
      * @return array<string, list<array<string, mixed>>>
      */
-    public function masterLists(int $vendorId, bool $activeOnly = true): array
+    public function masterLists(int $companyId, bool $activeOnly = true): array
     {
         $lists = [];
         foreach (array_keys(self::MASTER_LISTS) as $list) {
-            $lists[$list] = $this->masterList($list, $vendorId, $activeOnly);
+            $lists[$list] = $this->masterList($list, $companyId, $activeOnly);
         }
 
         return $lists;
@@ -247,7 +247,7 @@ class CompanyConfigRepository
      *
      * @return int  how many rows were created
      */
-    public function forkSharedList(string $list, int $vendorId, ?string $note = null): int
+    public function forkSharedList(string $list, int $companyId, ?string $note = null): int
     {
         $alias = self::MASTER_LISTS[$list] ?? null;
         if ($alias === null) {
@@ -258,14 +258,14 @@ class CompanyConfigRepository
 
         $existing = $table->find()
             ->select(['code'])
-            ->where(['vendor_id' => $vendorId])
+            ->where(['company_id' => $companyId])
             ->disableHydration()
             ->all()
             ->extract('code')
             ->toArray();
 
         $shared = $table->find()
-            ->where(['vendor_id IS' => null])
+            ->where(['company_id IS' => null])
             ->disableHydration()
             ->all();
 
@@ -275,8 +275,8 @@ class CompanyConfigRepository
                 continue;
             }
 
-            unset($row['id'], $row['created'], $row['modified'], $row['vendor_key']);
-            $row['vendor_id'] = $vendorId;
+            unset($row['id'], $row['created'], $row['modified'], $row['company_key']);
+            $row['company_id'] = $companyId;
             $row['override_note'] = $note ?? 'Forked from the shared baseline at onboarding.';
 
             $table->saveOrFail($table->newEntity($row));
@@ -289,13 +289,13 @@ class CompanyConfigRepository
     /**
      * Invalidate a company's cached settings.
      */
-    public function forget(int $vendorId): void
+    public function forget(int $companyId): void
     {
-        Cache::delete($this->settingsCacheKey($vendorId), self::CACHE_CONFIG);
+        Cache::delete($this->settingsCacheKey($companyId), self::CACHE_CONFIG);
     }
 
-    private function settingsCacheKey(int $vendorId): string
+    private function settingsCacheKey(int $companyId): string
     {
-        return sprintf('company_settings_%d', $vendorId);
+        return sprintf('company_settings_%d', $companyId);
     }
 }

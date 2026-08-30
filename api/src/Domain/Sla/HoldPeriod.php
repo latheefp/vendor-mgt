@@ -12,7 +12,7 @@ use DateTimeImmutable;
  * "All service and installation should be closed within 48 hrs" is not
  * achievable when the customer is away for a week or the panel is on
  * back-order, and neither delay is ours. Each hold is recorded, emailed
- * to the vendor, and subtracted from the elapsed time.
+ * to the company, and subtracted from the elapsed time.
  *
  * An open hold (no `endedAt`) is treated as running up to the moment of
  * measurement, so a ticket still on hold does not silently accrue

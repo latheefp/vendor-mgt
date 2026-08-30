@@ -76,7 +76,7 @@ abstract class AppMigration extends BaseMigration
     /**
      * A percentage, e.g. the 10% out-of-warranty royalty or a 12.5%
      * spare-part margin. Two decimal places is enough for every rate
-     * that appears in a vendor agreement.
+     * that appears in a company agreement.
      */
     protected function percent(Table $table, string $column, array $options = []): Table
     {

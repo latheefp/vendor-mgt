@@ -107,8 +107,7 @@ class RateCardItemsTable extends Table
         $validator
             ->scalar('label')
             ->maxLength('label', 190)
-            ->requirePresence('label', 'create')
-            ->notEmptyString('label');
+            ->allowEmptyString('label');
 
         $validator
             ->nonNegativeInteger('priority')

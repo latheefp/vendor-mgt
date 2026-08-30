@@ -30,8 +30,8 @@ enum ChargeLineType: string
     /** Our margin on a spare billed to the customer. */
     case SpareMargin = 'spare_margin';
 
-    /** The vendor's cut of out-of-warranty service we collected. */
-    case VendorRoyalty = 'vendor_royalty';
+    /** The company's cut of out-of-warranty service we collected. */
+    case CompanyRoyalty = 'company_royalty';
 
     /** What the technician earns for the job. */
     case TechnicianPayout = 'technician_payout';
@@ -41,6 +41,18 @@ enum ChargeLineType: string
 
     /** An SLA penalty recovered from the technician who caused it. */
     case TechnicianPenaltyRecovery = 'technician_penalty_recovery';
+
+    /**
+     * Work agreed on the job itself, recorded while the ticket is still
+     * open — a gas refill, a second visit, an inspection fee.
+     *
+     * Distinct from Adjustment: this is not a correction to a bill already
+     * sent, it is part of the original bill being assembled. Closure keeps
+     * these lines rather than recomputing them away, because the desk
+     * agreed them with the customer and the rate card never knew about
+     * them. See TicketClosureService::freeze().
+     */
+    case Boq = 'boq';
 
     /**
      * A correction. Frozen lines are never edited, so every after-the-fact
@@ -57,10 +69,11 @@ enum ChargeLineType: string
             self::Travel => 'Travel reimbursement',
             self::SpareCost => 'Spare part cost',
             self::SpareMargin => 'Spare part margin',
-            self::VendorRoyalty => 'Vendor royalty',
+            self::CompanyRoyalty => 'Company royalty',
             self::TechnicianPayout => 'Technician payout',
             self::TechnicianBonusShare => 'Technician bonus share',
             self::TechnicianPenaltyRecovery => 'Penalty recovery',
+            self::Boq => 'Additional service',
             self::Adjustment => 'Adjustment',
         };
     }

@@ -56,13 +56,13 @@ final class DianoraRateCard
     public static function items(): array
     {
         return [
-            // ---- installation (billed to the vendor) -----------------
+            // ---- installation (billed to the company) -----------------
             new RateCardItemData(
                 id: 1,
                 jobTypeCode: self::JOB_INSTALLATION,
                 warrantyScope: WarrantyScope::NotApplicable,
                 amount: Money::fromRupees(350),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Installation 24"-43"',
                 sizeMinInch: 24,
                 sizeMaxInch: 43,
@@ -72,7 +72,7 @@ final class DianoraRateCard
                 jobTypeCode: self::JOB_INSTALLATION,
                 warrantyScope: WarrantyScope::NotApplicable,
                 amount: Money::fromRupees(500),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Installation 45"-65"',
                 sizeMinInch: 45,
                 sizeMaxInch: 65,
@@ -82,17 +82,17 @@ final class DianoraRateCard
                 jobTypeCode: self::JOB_DEMO,
                 warrantyScope: WarrantyScope::NotApplicable,
                 amount: Money::fromRupees(250),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Demo / site inspection',
             ),
 
-            // ---- service in warranty (billed to the vendor) ----------
+            // ---- service in warranty (billed to the company) ----------
             new RateCardItemData(
                 id: 4,
                 jobTypeCode: self::JOB_SERVICE,
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(400),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Service in warranty 24"-43"',
                 sizeMinInch: 24,
                 sizeMaxInch: 43,
@@ -102,7 +102,7 @@ final class DianoraRateCard
                 jobTypeCode: self::JOB_SERVICE,
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(500),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Service in warranty 45"-85"',
                 sizeMinInch: 45,
                 sizeMaxInch: 85,
@@ -112,7 +112,7 @@ final class DianoraRateCard
                 jobTypeCode: self::JOB_EXCHANGE,
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(700),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'TV set exchange or delivery',
             ),
             new RateCardItemData(
@@ -120,7 +120,7 @@ final class DianoraRateCard
                 jobTypeCode: self::JOB_PANEL,
                 warrantyScope: WarrantyScope::InWarranty,
                 amount: Money::fromRupees(1000),
-                payer: Payer::Vendor,
+                payer: Payer::Company,
                 label: 'Open cell & backlight replacement and service',
             ),
 

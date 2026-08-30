@@ -386,7 +386,12 @@ class EvidenceService
 
         // A symptom that needed a video is unblocked by receiving one; the
         // ticket was legitimately on hold waiting for it.
-        if ($kind === 'video') {
+        //
+        // The bytes decide, not the label. A technician who films the fault
+        // and leaves the picker on "after" has still sent the video, and the
+        // duplicate-hash check means they cannot simply upload it again
+        // under the right label to fix it.
+        if ($kind === 'video' || str_starts_with((string)($meta['mime_type'] ?? ''), 'video/')) {
             $this->fetchTable('Tickets')->updateAll(
                 ['video_proof_received_at' => DateTime::now()],
                 ['id' => $ticketId, 'video_proof_received_at IS' => null],
@@ -532,7 +537,7 @@ class EvidenceService
     public function outstandingRequirements(int $ticketId): array
     {
         $ticket = $this->fetchTable('Tickets')->get($ticketId);
-        $settings = $this->config->settings((int)$ticket->vendor_id);
+        $settings = $this->config->settings((int)$ticket->company_id);
 
         $missing = [];
 

@@ -86,11 +86,11 @@ class ProductsController extends ApiController
     {
         $productsTable = $this->fetchTable('Products');
         $query = $productsTable->find()
-            ->contain(['Vendors', 'ProductCategories']);
+            ->contain(['Companies', 'ProductCategories']);
 
-        $vendorId = $this->request->getQuery('vendor_id');
-        if ($vendorId) {
-            $query->where(['Products.vendor_id' => (int)$vendorId]);
+        $companyId = $this->request->getQuery('company_id');
+        if ($companyId) {
+            $query->where(['Products.company_id' => (int)$companyId]);
         }
 
         $categoryId = $this->request->getQuery('product_category_id');
@@ -120,7 +120,7 @@ class ProductsController extends ApiController
     {
         $product = $this->fetchTable('Products')->find()
             ->where(['Products.id' => (int)$id])
-            ->contain(['Vendors', 'ProductCategories'])
+            ->contain(['Companies', 'ProductCategories'])
             ->first();
 
         if ($product === null) {
@@ -147,7 +147,7 @@ class ProductsController extends ApiController
             return $this->fail('save_failed', 'Could not create product model.', 400, $product->getErrors());
         }
 
-        $product = $productsTable->get($product->id, contain: ['Vendors', 'ProductCategories']);
+        $product = $productsTable->get($product->id, contain: ['Companies', 'ProductCategories']);
         return $this->respond($product, [], 201);
     }
 
@@ -174,7 +174,7 @@ class ProductsController extends ApiController
             return $this->fail('save_failed', 'Could not update product model.', 400, $product->getErrors());
         }
 
-        $product = $productsTable->get($product->id, contain: ['Vendors', 'ProductCategories']);
+        $product = $productsTable->get($product->id, contain: ['Companies', 'ProductCategories']);
         return $this->respond($product);
     }
 

@@ -78,6 +78,13 @@ class TicketsControllerTest extends TestCase
         $this->assertResponseContains('gross_margin');
     }
 
+    public function testRemoveChargeLine(): void
+    {
+        $this->enableCsrfToken('gvsCsrfToken');
+        $this->delete('/api/tickets/1/charges/99999');
+        $this->assertResponseCode(422);
+    }
+
     public function testComments(): void
     {
         $this->get('/api/tickets/1/comments');
@@ -98,4 +105,65 @@ class TicketsControllerTest extends TestCase
         $this->assertResponseOk();
         $this->assertHeader('Content-Type', 'application/json');
     }
+
+    public function testEditTicket(): void
+    {
+        $this->enableCsrfToken('gvsCsrfToken');
+        $this->configRequest([
+            'headers' => ['Accept' => 'application/json'],
+        ]);
+
+        $companies = $this->getTableLocator()->get('Companies');
+        $company = $companies->newEntity([
+            'code' => 'TEST_COMP_' . rand(1000, 9999),
+            'name' => 'Test Company',
+            'is_active' => true,
+        ]);
+        $companies->saveOrFail($company);
+
+        $scs = $this->getTableLocator()->get('ServiceCenters');
+        $sc = $scs->newEntity([
+            'code' => 'TEST_SC_' . rand(1000, 9999),
+            'name' => 'Center 1',
+            'is_active' => true,
+        ]);
+        $scs->saveOrFail($sc);
+
+        $jobTypes = $this->getTableLocator()->get('JobTypes');
+        $jobType = $jobTypes->newEntity([
+            'code' => 'TEST_JT_' . rand(1000, 9999),
+            'name' => 'Demo',
+            'is_active' => true,
+        ]);
+        $jobTypes->saveOrFail($jobType);
+
+        $createPayload = [
+            'company_id' => $company->id,
+            'service_center_id' => $sc->id,
+            'job_type_id' => $jobType->id,
+            'warranty_scope' => 'in_warranty',
+            'reported_issue' => 'Original reported issue',
+            'priority' => 'normal',
+            'serial_no' => 'SN12345678',
+            'purchase_date' => '2025-01-01',
+            'customer' => [
+                'name' => 'John Doe',
+                'phone' => '9876543210',
+                'address_line1' => '123 St',
+                'city' => 'Kochi',
+            ],
+        ];
+
+        $result = (new TicketWorkflow())->intake($createPayload);
+        $this->assertTrue($result['ok']);
+        $ticketId = $result['ticket_id'];
+
+        $updatePayload = $createPayload;
+        $updatePayload['reported_issue'] = 'Updated reported issue text';
+
+        $this->put('/api/tickets/' . $ticketId, $updatePayload);
+        $this->assertResponseOk();
+        $this->assertResponseContains('Updated reported issue text');
+    }
 }
+

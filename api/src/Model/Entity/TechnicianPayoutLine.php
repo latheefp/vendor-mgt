@@ -61,7 +61,7 @@ class TechnicianPayoutLine extends Entity
 
     /**
      * Whether this line was restated by hand after the run. See the
-     * matching accessor on {@see \App\Model\Entity\VendorInvoiceLine}.
+     * matching accessor on {@see \App\Model\Entity\CompanyInvoiceLine}.
      */
     protected function _getIsOverridden(): bool
     {

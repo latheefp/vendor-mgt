@@ -10,6 +10,21 @@ import {
   type TicketOptions,
 } from '../lib/api'
 import { FitSparePanel } from '../components/FitSparePanel'
+import { FittedSpares } from '../components/FittedSpares'
+
+/**
+ * Today, in the local calendar, as the `max` a date picker will accept.
+ *
+ * Built from the local parts rather than `toISOString()`, which converts
+ * to UTC first and hands back yesterday for anyone east of Greenwich after
+ * midnight — locking out the one day they most need to pick.
+ */
+function today(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`
+}
 
 export function TicketsPanel() {
   const [tickets, setTickets] = useState<Ticket[]>([])
@@ -19,8 +34,11 @@ export function TicketsPanel() {
   // Active by default: closed and cancelled jobs are history, and a desk
   // that opens on all of them has to hunt for the work still owed.
   const [statusFilter, setStatusFilter] = useState<string>('active')
+  const [companyFilter, setCompanyFilter] = useState<string>('')
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list')
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
+  const [editingTicketId, setEditingTicketId] = useState<number | null>(null)
+  const [editingTicketNo, setEditingTicketNo] = useState<string | null>(null)
   const [assigningTechId, setAssigningTechId] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -33,7 +51,7 @@ export function TicketsPanel() {
   // carried on the list rows — both are only ever read one ticket at a time.
   const [comments, setComments] = useState<TicketComment[]>([])
   const [commentBody, setCommentBody] = useState('')
-  const [commentVisibility, setCommentVisibility] = useState<'internal' | 'vendor' | 'customer'>('internal')
+  const [commentVisibility, setCommentVisibility] = useState<'internal' | 'company' | 'customer'>('internal')
   const [ledger, setLedger] = useState<TicketLedger | null>(null)
   const [statusMoves, setStatusMoves] = useState<string[]>([])
   const [holdReasonId, setHoldReasonId] = useState('')
@@ -41,14 +59,14 @@ export function TicketsPanel() {
   const [attachments, setAttachments] = useState<TicketAttachment[]>([])
   const [photoKind, setPhotoKind] = useState('after')
   const [adjustment, setAdjustment] = useState({
-    ledger: 'vendor_receivable',
+    ledger: 'company_receivable',
     amount: '',
     reason: '',
   })
 
   // Intake Form State
   const [formData, setFormData] = useState({
-    vendor_id: '',
+    company_id: '',
     service_center_id: '',
     job_type_id: '',
     warranty_scope: 'in_warranty',
@@ -61,7 +79,7 @@ export function TicketsPanel() {
     symptom_id: '',
     reported_issue: '',
     priority: 'normal',
-    vendor_ticket_ref: '',
+    company_ticket_ref: '',
     customer: {
       name: '',
       phone: '',
@@ -79,10 +97,10 @@ export function TicketsPanel() {
   }, [])
 
   useEffect(() => {
-    if (formData.vendor_id) {
-      void loadOptions(Number(formData.vendor_id))
+    if (formData.company_id) {
+      void loadOptions(Number(formData.company_id))
     }
-  }, [formData.vendor_id])
+  }, [formData.company_id])
 
   useEffect(() => {
     if (selectedTicket === null) {
@@ -103,18 +121,19 @@ export function TicketsPanel() {
     setMessage(null)
   }, [selectedTicket?.id])
 
-  const loadOptions = async (vendorId?: number) => {
+  const loadOptions = async (companyId?: number) => {
     try {
-      const opts = await api.ticketOptions(vendorId)
+      const opts = await api.ticketOptions(companyId)
       setOptions(opts)
-      if (!vendorId && opts.vendors.length > 0 && opts.service_centers.length > 0 && opts.job_types.length > 0) {
+      if (!companyId && opts.companies.length > 0 && opts.service_centers.length > 0 && opts.job_types.length > 0) {
         setFormData((prev) => ({
           ...prev,
-          vendor_id: String(opts.vendors[0].id),
-          service_center_id: String(opts.service_centers[0].id),
+          company_id: String(opts.companies[0].id),
+          service_center_id: defaultServiceCenterId(opts),
           job_type_id: String(opts.job_types[0].id),
           brand_id: opts.brands.length > 0 ? String(opts.brands[0].id) : '',
           product_category_id: opts.product_categories.length > 0 ? String(opts.product_categories[0].id) : '',
+          customer: { ...prev.customer, district_id: defaultDistrictId(opts) },
         }))
       }
     } catch (err) {
@@ -123,22 +142,139 @@ export function TicketsPanel() {
   }
 
   /**
-   * `status` is passed explicitly by the dropdown: reading it from state
-   * here would send the previous selection, because the setter has not
-   * committed by the time the change handler calls this.
+   * Settings-driven defaults, e.g. the district and service center the desk
+   * takes most of its walk-in tickets for (`ticket.default_district_code` /
+   * `ticket.default_service_center_code`). Falls back to the first entry in
+   * the list so the form still has something selected when the setting
+   * names a code the master list no longer has.
    */
-  const loadTickets = async (status: string = statusFilter) => {
+  const defaultDistrictId = (opts: TicketOptions): string => {
+    const code = opts.requirements?.['ticket.default_district_code']
+    const match = typeof code === 'string' ? opts.districts.find((d) => d.code === code) : undefined
+    return String((match ?? opts.districts[0])?.id ?? '')
+  }
+
+  const defaultServiceCenterId = (opts: TicketOptions): string => {
+    const code = opts.requirements?.['ticket.default_service_center_code']
+    const match = typeof code === 'string' ? opts.service_centers.find((sc) => sc.code === code) : undefined
+    return String((match ?? opts.service_centers[0])?.id ?? '')
+  }
+
+  const resetForm = () => {
+    if (options && options.companies.length > 0 && options.service_centers.length > 0 && options.job_types.length > 0) {
+      setFormData({
+        company_id: String(options.companies[0].id),
+        service_center_id: defaultServiceCenterId(options),
+        job_type_id: String(options.job_types[0].id),
+        warranty_scope: 'in_warranty',
+        brand_id: options.brands.length > 0 ? String(options.brands[0].id) : '',
+        product_category_id: options.product_categories.length > 0 ? String(options.product_categories[0].id) : '',
+        model_no: '',
+        serial_no: '',
+        size_inch: '',
+        purchase_date: '',
+        symptom_id: '',
+        reported_issue: '',
+        priority: 'normal',
+        company_ticket_ref: '',
+        customer: {
+          name: '',
+          phone: '',
+          alt_phone: '',
+          address_line1: '',
+          city: '',
+          district_id: defaultDistrictId(options),
+          pincode: '',
+        },
+      })
+    }
+  }
+
+  const startEditTicket = (ticket: Ticket) => {
+    setFormData({
+      company_id: ticket.company_id ? String(ticket.company_id) : '',
+      service_center_id: ticket.service_center_id ? String(ticket.service_center_id) : '',
+      job_type_id: ticket.job_type_id ? String(ticket.job_type_id) : '',
+      warranty_scope: ticket.warranty_scope || 'in_warranty',
+      brand_id: ticket.brand_id ? String(ticket.brand_id) : (ticket.brand?.id ? String(ticket.brand.id) : ''),
+      product_category_id: ticket.product_category_id ? String(ticket.product_category_id) : (ticket.product_category?.id ? String(ticket.product_category.id) : ''),
+      model_no: ticket.model_no || '',
+      serial_no: ticket.serial_no || '',
+      size_inch: ticket.size_inch ? String(ticket.size_inch) : '',
+      purchase_date: ticket.purchase_date ? String(ticket.purchase_date).split('T')[0] : '',
+      symptom_id: ticket.symptom_id ? String(ticket.symptom_id) : (ticket.symptom?.id ? String(ticket.symptom.id) : ''),
+      reported_issue: ticket.reported_issue || '',
+      priority: ticket.priority || 'normal',
+      company_ticket_ref: ticket.company_ticket_ref || '',
+      customer: {
+        name: ticket.customer?.name || '',
+        phone: ticket.customer?.phone || '',
+        alt_phone: ticket.customer?.alt_phone || '',
+        address_line1: ticket.customer?.address_line1 || '',
+        city: ticket.customer?.city || '',
+        district_id: ticket.customer?.district_id ? String(ticket.customer.district_id) : '',
+        pincode: ticket.customer?.pincode || '',
+      },
+    })
+    setEditingTicketId(ticket.id)
+    setEditingTicketNo(ticket.ticket_no)
+    setSelectedTicket(null)
+    setActiveTab('create')
+    setFieldErrors({})
+    setMessage(null)
+  }
+
+  const cancelEdit = () => {
+    setEditingTicketId(null)
+    setEditingTicketNo(null)
+    resetForm()
+    setActiveTab('list')
+  }
+
+  /**
+   * A changed dropdown passes its own value in rather than letting this
+   * read state: the setter has not committed by the time the change
+   * handler calls this, so state here is still the previous selection.
+   * Everything not overridden falls back to what is on screen.
+   */
+  const loadTickets = async (
+    overrides: { status?: string; company?: string } = {},
+  ) => {
+    const status = overrides.status ?? statusFilter
+    const company = overrides.company ?? companyFilter
+
     setLoading(true)
     try {
       const params: Record<string, string> = {}
       if (search) params.q = search
       if (status) params.status = status
+      if (company) params.company_id = company
       const list = await api.listTickets(params)
       setTickets(list)
     } catch (err) {
       console.error('Failed to load tickets', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  /**
+   * Open the detail panel on one ticket.
+   *
+   * The list rows are the trimmed shape `GET /tickets` returns; the panel
+   * wants the full read, which is the only one carrying the symptom, the
+   * resolution, the district and the event trail. Two controls open the
+   * panel — the ticket number and the button at the end of the row — so
+   * the fetch lives here rather than in either of them.
+   */
+  const openTicket = async (ticketId: number) => {
+    try {
+      setSelectedTicket(await api.getTicket(ticketId))
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err instanceof ApiError ? err.message : 'The ticket could not be opened.',
+      })
     }
   }
 
@@ -160,9 +296,14 @@ export function TicketsPanel() {
   const handleUploadPhoto = async (file: File | undefined) => {
     if (selectedTicket === null || file === undefined) return
 
+    // A video is a video whatever the picker says. Left to itself the
+    // selector defaults to "after", and a symptom video filed under that
+    // label leaves the ticket blocked on evidence it has already received.
+    const kind = file.type.startsWith('video/') ? 'video' : photoKind
+
     setSubmitting(true)
     try {
-      await api.uploadTicketAttachment(selectedTicket.id, photoKind, file)
+      await api.uploadTicketAttachment(selectedTicket.id, kind, file)
       setAttachments(await api.listTicketAttachments(selectedTicket.id))
       setMessage({ type: 'success', text: `${file.name} attached.` })
     } catch (err) {
@@ -331,6 +472,36 @@ export function TicketsPanel() {
     }
   }
 
+  /**
+   * Extra work agreed while the job is open. Distinct from an adjustment:
+   * this is part of the bill being assembled, so it must not freeze the
+   * ticket — a frozen `in_progress` job refuses parts and refuses closure.
+   */
+  const handleAddServiceLine = async () => {
+    if (selectedTicket === null) return
+
+    setSubmitting(true)
+    try {
+      await api.addTicketServiceLine(selectedTicket.id, {
+        ledger: adjustment.ledger,
+        amount: adjustment.amount,
+        description: adjustment.reason,
+      })
+      setAdjustment({ ledger: adjustment.ledger, amount: '', reason: '' })
+      await loadTicketDetail(selectedTicket.id)
+      setMessage({ type: 'success', text: 'Service line added. It will be billed when the ticket closes.' })
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err instanceof ApiError
+          ? Object.values(err.fields).flat().join(' ') || err.message
+          : 'The service line could not be recorded.',
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleAddAdjustment = async () => {
     if (selectedTicket === null) return
 
@@ -367,11 +538,11 @@ export function TicketsPanel() {
 
     try {
       const payload = {
-        vendor_id: Number(formData.vendor_id),
+        company_id: Number(formData.company_id),
         service_center_id: Number(formData.service_center_id),
         job_type_id: Number(formData.job_type_id),
         warranty_scope: formData.warranty_scope,
-        vendor_ticket_ref: formData.vendor_ticket_ref || null,
+        company_ticket_ref: formData.company_ticket_ref || null,
         brand_id: formData.brand_id ? Number(formData.brand_id) : null,
         product_category_id: formData.product_category_id ? Number(formData.product_category_id) : null,
         model_no: formData.model_no || null,
@@ -392,10 +563,20 @@ export function TicketsPanel() {
         },
       }
 
-      const created = await api.createTicket(payload)
-      setMessage({ type: 'success', text: `Ticket #${created.ticket_no} created successfully!` })
-      setActiveTab('list')
-      void loadTickets()
+      if (editingTicketId) {
+        const updated = await api.updateTicket(editingTicketId, payload)
+        setMessage({ type: 'success', text: `Ticket #${updated.ticket_no} updated successfully!` })
+        setEditingTicketId(null)
+        setEditingTicketNo(null)
+        resetForm()
+        setActiveTab('list')
+        void loadTickets()
+      } else {
+        const created = await api.createTicket(payload)
+        setMessage({ type: 'success', text: `Ticket #${created.ticket_no} created successfully!` })
+        setActiveTab('list')
+        void loadTickets()
+      }
     } catch (err: any) {
       const fields: Record<string, string[]> = err.fields || {}
       setFieldErrors(fields)
@@ -420,8 +601,13 @@ export function TicketsPanel() {
       setSelectedTicket(updated)
       setMessage({ type: 'success', text: `Assigned to technician successfully` })
       void loadTickets()
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to assign technician' })
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err instanceof ApiError
+          ? Object.values(err.fields).flat().join(' ') || err.message
+          : 'Failed to assign technician',
+      })
     }
   }
 
@@ -442,6 +628,34 @@ export function TicketsPanel() {
     }
     return map[status] ?? 'bg-slate-100 text-slate-800'
   }
+
+  /** An em dash beats an empty gap: it says "not recorded" rather than
+   *  leaving the desk unsure whether the panel failed to load. */
+  const shown = (value: unknown): string =>
+    value === null || value === undefined || value === '' ? '—' : String(value)
+
+  const formatDate = (value: string | null | undefined) =>
+    value ? new Date(value).toLocaleDateString() : '—'
+
+  const formatDateTime = (value: string | null | undefined) =>
+    value ? new Date(value).toLocaleString() : '—'
+
+  /**
+   * Street, landmark, town, district and pincode, minus whatever is blank.
+   * The matched master district wins over the free text it was matched from;
+   * intake that never got matched still has only the free text to show.
+   */
+  const fullAddress = (c: NonNullable<Ticket['customer']>) =>
+    [
+      c.address_line1,
+      c.address_line2,
+      c.landmark,
+      c.city,
+      c.district_ref?.name ?? c.district,
+      c.pincode,
+    ]
+      .filter((part) => part !== null && part !== undefined && part !== '')
+      .join(', ')
 
   /** Older events were stored without a description. Read the row instead. */
   const eventLabel = (ev: TicketEventItem) => {
@@ -498,14 +712,21 @@ export function TicketsPanel() {
             {statusFilter === 'active' ? 'Active' : 'Tickets'} ({tickets.length})
           </button>
           <button
-            onClick={() => setActiveTab('create')}
+            onClick={() => {
+              if (editingTicketId) {
+                setEditingTicketId(null)
+                setEditingTicketNo(null)
+                resetForm()
+              }
+              setActiveTab('create')
+            }}
             className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
               activeTab === 'create'
                 ? 'bg-brand-600 text-white shadow-sm hover:bg-brand-700'
                 : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
             }`}
           >
-            + Create New Ticket
+            {editingTicketId ? `Editing Ticket #${editingTicketNo}` : '+ Create New Ticket'}
           </button>
         </div>
       </div>
@@ -513,12 +734,29 @@ export function TicketsPanel() {
       {/* The modal carries its own copy while it is open. */}
       {selectedTicket === null && notice}
 
-      {/* CREATE TICKET INTAKE FORM */}
+      {/* CREATE / EDIT TICKET INTAKE FORM */}
       {activeTab === 'create' && (
         <form
           onSubmit={handleCreateSubmit}
           className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
         >
+          {editingTicketId && (
+            <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-amber-900 dark:text-amber-200">
+                  Editing Ticket #{editingTicketNo}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="text-xs font-medium text-amber-800 hover:underline dark:text-amber-300"
+              >
+                Cancel Edit
+              </button>
+            </div>
+          )}
+
           <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
             1. Customer Details
           </h2>
@@ -629,16 +867,16 @@ export function TicketsPanel() {
           <div className="mb-6 grid gap-4 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                Vendor / Principal *
+                Company / Principal *
               </label>
               <select
-                value={formData.vendor_id}
-                onChange={(e) => setFormData((prev) => ({ ...prev, vendor_id: e.target.value }))}
+                value={formData.company_id}
+                onChange={(e) => setFormData((prev) => ({ ...prev, company_id: e.target.value }))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
-                {options?.vendors.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.code})
+                {options?.companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name} ({company.code})
                   </option>
                 ))}
               </select>
@@ -774,6 +1012,10 @@ export function TicketsPanel() {
               </label>
               <input
                 type="date"
+                /* A bill cannot be dated later than today. The backend
+                   refuses one anyway — this only stops the picker from
+                   offering a day that will be rejected. */
+                max={today()}
                 value={formData.purchase_date}
                 onChange={(e) => setFormData((prev) => ({ ...prev, purchase_date: e.target.value }))}
                 className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:bg-slate-800 dark:text-white ${
@@ -796,6 +1038,26 @@ export function TicketsPanel() {
                 placeholder="e.g. 55"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                Catalogued Symptom / Fault
+              </label>
+              <select
+                value={formData.symptom_id}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, symptom_id: e.target.value }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              >
+                <option value="">Select Symptom (Optional)</option>
+                {options?.symptoms.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} {s.requires_video_proof ? '📹 (Requires Video Proof)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="md:col-span-2">
@@ -834,17 +1096,23 @@ export function TicketsPanel() {
           <div className="flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => setActiveTab('list')}
+              onClick={editingTicketId ? cancelEdit : () => setActiveTab('list')}
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              Cancel
+              {editingTicketId ? 'Cancel Edit' : 'Cancel'}
             </button>
             <button
               type="submit"
               disabled={submitting}
               className="rounded-xl bg-brand-600 px-6 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? 'Creating...' : 'Create Ticket'}
+              {submitting
+                ? editingTicketId
+                  ? 'Updating...'
+                  : 'Creating...'
+                : editingTicketId
+                  ? 'Update Ticket'
+                  : 'Create Ticket'}
             </button>
           </div>
         </form>
@@ -870,11 +1138,28 @@ export function TicketsPanel() {
               </button>
             </form>
 
+            <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={companyFilter}
+              onChange={(e) => {
+                setCompanyFilter(e.target.value)
+                void loadTickets({ company: e.target.value })
+              }}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            >
+              <option value="">All Companies</option>
+              {options?.companies.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+
             <select
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value)
-                void loadTickets(e.target.value)
+                void loadTickets({ status: e.target.value })
               }}
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             >
@@ -897,6 +1182,7 @@ export function TicketsPanel() {
               <option value="cancelled">Cancelled</option>
               <option value="rejected">Rejected</option>
             </select>
+            </div>
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -934,10 +1220,18 @@ export function TicketsPanel() {
                       key={t.id}
                       className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                     >
-                      <td className="px-4 py-3 font-semibold text-brand-600 dark:text-brand-400">
-                        {t.ticket_no}
+                      <td className="px-4 py-3">
+                        {/* The number is the thing everyone points at, so it
+                            opens the ticket too — the button at the end of
+                            the row is no longer the only way in. */}
+                        <button
+                          onClick={() => void openTicket(t.id)}
+                          className="font-semibold text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+                        >
+                          {t.ticket_no}
+                        </button>
                         <div className="text-xs font-normal text-slate-500">
-                          {t.vendor?.name} · {t.job_type?.name}
+                          {t.company?.name} · {t.job_type?.name}
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -947,11 +1241,20 @@ export function TicketsPanel() {
                         <div className="text-xs text-slate-500">{t.customer?.phone}</div>
                       </td>
                       <td className="px-4 py-3">
+                        {/* Category first: what the appliance *is* decides
+                            which rates apply, and a model number alone does
+                            not say whether this is a TV or a washing
+                            machine. Size only when there is one — an
+                            empty "()" on every non-TV row was noise. */}
                         <div className="text-slate-800 dark:text-slate-200">
-                          {t.model_no ? `${t.model_no} (${t.size_inch ? t.size_inch + '″' : ''})` : 'Product'}
+                          {t.product_category?.name ?? 'Uncategorised'}
+                          {t.size_inch ? ` · ${t.size_inch}″` : ''}
                         </div>
-                        <div className="truncate text-xs text-slate-500 max-w-[200px]">
-                          {t.reported_issue || 'No issue description'}
+                        <div className="text-xs text-slate-500">
+                          {[t.brand?.name, t.model_no].filter(Boolean).join(' ') || 'No model recorded'}
+                        </div>
+                        <div className="truncate text-xs text-slate-500 max-w-[220px]">
+                          {t.reported_issue || t.symptom?.name || 'No issue description'}
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -982,15 +1285,22 @@ export function TicketsPanel() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={async () => {
-                            const full = await api.getTicket(t.id)
-                            setSelectedTicket(full)
-                          }}
-                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                        >
-                          View & Assign
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {!['closed', 'cancelled', 'rejected'].includes(t.status) && (
+                            <button
+                              onClick={() => void api.getTicket(t.id).then((full) => startEditTicket(full))}
+                              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          <button
+                            onClick={() => void openTicket(t.id)}
+                            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            View & Assign
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1016,12 +1326,22 @@ export function TicketsPanel() {
                   Received: {new Date(selectedTicket.received_at).toLocaleString()}
                 </p>
               </div>
-              <button
-                onClick={() => setSelectedTicket(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                {!['closed', 'cancelled', 'rejected'].includes(selectedTicket.status) && (
+                  <button
+                    onClick={() => startEditTicket(selectedTicket)}
+                    className="rounded-lg border border-brand-500 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                  >
+                    Edit Ticket
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedTicket(null)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Outside the scrolling body on purpose: the result of an action
@@ -1030,42 +1350,185 @@ export function TicketsPanel() {
             {notice && <div className="shrink-0 px-6 pt-4">{notice}</div>}
 
             <div className="flex-1 overflow-y-auto px-6 py-2">
-            <div className="my-4 grid gap-4 sm:grid-cols-2 text-sm">
-              <div>
-                <span className="text-xs text-slate-500">Customer</span>
-                <p className="font-semibold text-slate-900 dark:text-white">
-                  {selectedTicket.customer?.name} ({selectedTicket.customer?.phone})
+            {/* Everything the desk needs before it can act on the job: who
+                the customer is and where they are, what the appliance is,
+                what is wrong with it, and by when. All of it comes off the
+                single-ticket read — the panel used to show four lines of it
+                and leave the rest to a phone call. */}
+            <div className="my-4 grid gap-3 text-sm sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Customer
+                </span>
+                <p className="mt-1 font-semibold text-slate-900 dark:text-white">
+                  {shown(selectedTicket.customer?.name)}
                 </p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {selectedTicket.customer?.address_line1}, {selectedTicket.customer?.city}
-                </p>
+                <dl className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Phone</dt>
+                    <dd className="font-medium text-slate-700 dark:text-slate-300">
+                      {shown(selectedTicket.customer?.phone)}
+                      {selectedTicket.customer?.alt_phone
+                        ? ` · ${selectedTicket.customer.alt_phone}`
+                        : ''}
+                    </dd>
+                  </div>
+                  {selectedTicket.customer?.email && (
+                    <div className="flex gap-1.5">
+                      <dt className="shrink-0 text-slate-400">Email</dt>
+                      <dd className="break-all">{selectedTicket.customer.email}</dd>
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Address</dt>
+                    <dd>
+                      {selectedTicket.customer
+                        ? shown(fullAddress(selectedTicket.customer))
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
               </div>
 
-              <div>
-                <span className="text-xs text-slate-500">Service Info</span>
-                <p className="font-semibold text-slate-900 dark:text-white">
-                  {selectedTicket.vendor?.name} · {selectedTicket.job_type?.name}
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Product
+                </span>
+                {/* The category is the headline, not the model number: it is
+                    what decides which rate card rows can price the job. */}
+                <p className="mt-1 font-semibold text-slate-900 dark:text-white">
+                  {shown(selectedTicket.product_category?.name)}
+                  {selectedTicket.size_inch ? ` · ${selectedTicket.size_inch}″` : ''}
                 </p>
-                <p className="text-xs text-slate-600 dark:text-slate-400 capitalize">
-                  Warranty: {selectedTicket.warranty_scope.replace('_', ' ')}
-                </p>
+                <dl className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Brand / Model</dt>
+                    <dd>
+                      {shown(
+                        [selectedTicket.brand?.name, selectedTicket.model_no]
+                          .filter(Boolean)
+                          .join(' ') || null,
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Serial</dt>
+                    <dd className="break-all">{shown(selectedTicket.serial_no)}</dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Purchased</dt>
+                    <dd>{formatDate(selectedTicket.purchase_date)}</dd>
+                  </div>
+                </dl>
               </div>
 
-              <div>
-                <span className="text-xs text-slate-500">Product Info</span>
-                <p className="font-medium text-slate-800 dark:text-slate-200">
-                  {selectedTicket.model_no || 'N/A'} (Serial: {selectedTicket.serial_no || 'N/A'})
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Service
+                </span>
+                <p className="mt-1 font-semibold text-slate-900 dark:text-white">
+                  {shown(selectedTicket.company?.name)} · {shown(selectedTicket.job_type?.name)}
                 </p>
+                <dl className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Warranty</dt>
+                    <dd className="capitalize">
+                      {selectedTicket.warranty_scope.replace(/_/g, ' ')}
+                    </dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Priority</dt>
+                    <dd className="capitalize">{selectedTicket.priority}</dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Centre</dt>
+                    <dd>{shown(selectedTicket.service_center?.name)}</dd>
+                  </div>
+                  {/* The company's own number for this job — the one they
+                      quote back at us when they query an invoice. */}
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Their ref</dt>
+                    <dd className="break-all">{shown(selectedTicket.company_ticket_ref)}</dd>
+                  </div>
+                </dl>
               </div>
 
-              <div>
-                <span className="text-xs text-slate-500">SLA Due Dates</span>
-                <p className="text-xs text-slate-700 dark:text-slate-300">
-                  Contact: {selectedTicket.contact_due_at ? new Date(selectedTicket.contact_due_at).toLocaleTimeString() : 'N/A'}
-                  <br />
-                  Visit: {selectedTicket.visit_due_at ? new Date(selectedTicket.visit_due_at).toLocaleString() : 'N/A'}
-                </p>
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  SLA
+                </span>
+                <dl className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Received</dt>
+                    <dd>{formatDateTime(selectedTicket.received_at)}</dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Contact by</dt>
+                    <dd>{formatDateTime(selectedTicket.contact_due_at)}</dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Visit by</dt>
+                    <dd>{formatDateTime(selectedTicket.visit_due_at)}</dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="shrink-0 text-slate-400">Close by</dt>
+                    <dd>{formatDateTime(selectedTicket.close_due_at)}</dd>
+                  </div>
+                </dl>
               </div>
+            </div>
+
+            {/* The complaint. It sits on its own full-width row because it is
+                free text of any length, and because it is the one field the
+                technician reads before setting out. */}
+            <div className="my-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/40">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Complaint
+                </span>
+                {selectedTicket.symptom?.name && (
+                  <span className="rounded-md bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                    {selectedTicket.symptom.name}
+                  </span>
+                )}
+                {selectedTicket.is_repeat && (
+                  // A repeat inside the window is ours to answer for under
+                  // clause 7 of the agreement, so it is called out here.
+                  <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-800 dark:bg-rose-900/50 dark:text-rose-300">
+                    Repeat complaint
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">
+                {selectedTicket.reported_issue || 'No complaint was recorded at intake.'}
+              </p>
+
+              {selectedTicket.diagnosis && (
+                <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Diagnosis
+                  </span>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">
+                    {selectedTicket.diagnosis}
+                  </p>
+                </div>
+              )}
+
+              {selectedTicket.resolution?.name && (
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                  Resolved as{' '}
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedTicket.resolution.name}
+                  </span>
+                  {selectedTicket.closed_at ? ` on ${formatDateTime(selectedTicket.closed_at)}` : ''}
+                </p>
+              )}
+
+              {selectedTicket.cancellation_reason && (
+                <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
+                  Cancelled: {selectedTicket.cancellation_reason}
+                </p>
+              )}
             </div>
 
             {/* Assign Technician Section */}
@@ -1214,6 +1677,19 @@ export function TicketsPanel() {
 
               </div>
 
+              {/* What is already on the set, standing rather than narrated.
+                  The activity trail says a part was fitted; this says which
+                  parts are on, at whose cost, and what may still come off. */}
+              <FittedSpares
+                ticket={selectedTicket}
+                onChanged={(updated, text) => {
+                  setSelectedTicket(updated)
+                  setMessage({ type: 'success', text })
+                  void loadTickets()
+                }}
+                onError={(text) => setMessage({ type: 'error', text })}
+              />
+
               {/* Photographs. Not a condition of closing unless the company
                   turns that on in Settings, but they are what settles a
                   dispute, so the control sits with the other evidence. */}
@@ -1323,21 +1799,42 @@ export function TicketsPanel() {
               )}
             </div>
 
-            {/* Frozen ledger, and the only sanctioned way to change it */}
-            {ledger !== null && ledger.lines.length > 0 && (
+            {/* Ticket Charges & BOQ Services. Keyed on the ledger, not on the
+                ticket: it arrives from its own request a moment later, and is
+                left null when that request fails. */}
+            {ledger !== null && (
               <div className="my-4 rounded-xl border border-amber-100 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
                 <div className="mb-2 flex items-center justify-between">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-200">
-                    Charges {ledger.is_frozen && '· Frozen'}
+                    Charges {ledger.freeze !== null && '· Frozen'}
                   </h4>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Margin {ledger.totals.gross_margin?.formatted}
                   </span>
                 </div>
 
+                {/* Why the ledger is locked. A frozen ticket refuses parts
+                    and refuses closure, and those refusals used to name the
+                    rule without naming the cause — leaving "this ticket is
+                    closed" on a job the desk could see was in progress. */}
+                {ledger.freeze !== null && (
+                  <div className="mb-3 rounded-lg border border-slate-300 bg-white/70 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900/60">
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">
+                      🔒 Charges frozen · {new Date(ledger.freeze.frozen_at).toLocaleString()}
+                    </p>
+                    {ledger.freeze.reason !== null && (
+                      <p className="mt-0.5 text-slate-600 dark:text-slate-400">{ledger.freeze.reason}</p>
+                    )}
+                    <p className="mt-0.5 text-slate-500 dark:text-slate-500">
+                      {ledger.freeze.actor !== null ? `By ${ledger.freeze.actor}. ` : ''}
+                      Parts and closure are refused while frozen; corrections are adjustments.
+                    </p>
+                  </div>
+                )}
+
                 <div className="mb-3 space-y-1 text-xs">
                   {ledger.lines.map((line) => (
-                    <div key={line.id} className="flex items-baseline justify-between gap-2">
+                    <div key={line.id} className="flex items-center justify-between gap-2 border-b border-amber-100/60 pb-1 dark:border-amber-900/30">
                       <span className="text-slate-700 dark:text-slate-300">
                         {line.description}
                         {line.is_adjustment && (
@@ -1351,50 +1848,107 @@ export function TicketsPanel() {
                           </span>
                         )}
                       </span>
-                      <span className="shrink-0 tabular-nums font-medium text-slate-900 dark:text-white">
-                        {line.amount.formatted}
-                        <span className="ml-1 text-[10px] font-normal text-slate-500">{line.ledger_label}</span>
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="tabular-nums font-medium text-slate-900 dark:text-white">
+                          {line.amount.formatted}
+                          <span className="ml-1 text-[10px] font-normal text-slate-500">{line.ledger_label}</span>
+                        </span>
+                        <button
+                          onClick={async () => {
+                            if (!selectedTicket) return
+                            if (!confirm(`Remove "${line.description}" from charges?`)) return
+                            try {
+                              await api.removeTicketCharge(selectedTicket.id, line.id)
+                              const updatedCharges = await api.getTicketCharges(selectedTicket.id)
+                              setLedger(updatedCharges)
+                              setMessage({ type: 'success', text: `Removed "${line.description}" charge line.` })
+                            } catch (err: unknown) {
+                              setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not remove line' })
+                            }
+                          }}
+                          title="Remove charge line"
+                          className="rounded px-1.5 py-0.5 text-xs text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                        >
+                          🗑️ Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
 
-                {/* A frozen line is never edited — an invoice already sent
-                    would silently change. Corrections append instead. */}
+                {/* Bill of Quantities (BOQ) & Additional Service Items.
+                    The same form serves both sides of the freeze, because to
+                    the desk it is one question — "add money to this job" —
+                    but it posts to different endpoints and says which, since
+                    extra work agreed on an open job and a correction to a
+                    bill already sent are not the same event. */}
                 <div className="border-t border-amber-200 pt-3 dark:border-amber-900/50">
-                  <p className="mb-2 text-[11px] text-slate-600 dark:text-slate-400">
-                    Frozen lines cannot be edited. Add a correction — use a negative amount to
-                    credit the ledger.
-                  </p>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      {ledger.freeze !== null
+                        ? '📋 Adjust Frozen Charges'
+                        : '📋 Add Services & Rate Card Items (BOQ)'}
+                    </p>
+                    <span className="text-[11px] text-slate-500">
+                      {ledger.freeze !== null
+                        ? 'Appended as a correction; use a negative amount to reduce'
+                        : 'Pick from BOQ services or enter custom amount'}
+                    </span>
+                  </div>
+
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value
+                        if (!val) return
+                        const [name, price] = val.split('|')
+                        setAdjustment({
+                          ledger: 'company_receivable',
+                          reason: name,
+                          amount: price,
+                        })
+                      }}
+                      className="min-w-60 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    >
+                      <option value="">Select Rate Card Item / Service (BOQ)…</option>
+                      <option value="Basic Service Charge|400">Basic Service Charge — ₹400</option>
+                      <option value="Display / Panel Service Charge|600">Display / Panel Service Charge — ₹600</option>
+                      <option value="PCB / Motherboard Service Charge|850">PCB / Motherboard Service Charge — ₹850</option>
+                      <option value="Gas Refilling & Leak Repair|1200">Gas Refilling & Leak Repair — ₹1,200</option>
+                      <option value="General Inspection & Diagnostic Fee|300">General Inspection & Diagnostic Fee — ₹300</option>
+                      <option value="Compressor Servicing Fee|1500">Compressor Servicing Fee — ₹1,500</option>
+                    </select>
+                  </div>
+
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={adjustment.ledger}
                       onChange={(e) => setAdjustment({ ...adjustment, ledger: e.target.value })}
                       className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     >
-                      <option value="vendor_receivable">Vendor receivable</option>
+                      <option value="company_receivable">Company receivable</option>
                       <option value="customer_collection">Customer collection</option>
-                      <option value="vendor_payable">Payable to vendor</option>
+                      <option value="company_payable">Payable to company</option>
                       <option value="technician_payable">Payable to technician</option>
                     </select>
                     <input
                       value={adjustment.amount}
                       onChange={(e) => setAdjustment({ ...adjustment, amount: e.target.value })}
-                      placeholder="-150.00"
+                      placeholder="400.00"
                       className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-xs tabular-nums dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     />
                     <input
                       value={adjustment.reason}
                       onChange={(e) => setAdjustment({ ...adjustment, reason: e.target.value })}
-                      placeholder="Reason (prints on the invoice)"
+                      placeholder="Service / BOQ item description"
                       className="min-w-40 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     />
                     <button
-                      onClick={() => void handleAddAdjustment()}
+                      onClick={() => void (ledger.freeze !== null ? handleAddAdjustment() : handleAddServiceLine())}
                       disabled={submitting || adjustment.amount.trim() === '' || adjustment.reason.trim() === ''}
                       className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
                     >
-                      Add adjustment
+                      {ledger.freeze !== null ? '+ Add Adjustment' : '+ Add Service Line (BOQ)'}
                     </button>
                   </div>
                 </div>
@@ -1424,7 +1978,7 @@ export function TicketsPanel() {
                     className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     <option value="internal">Internal only</option>
-                    <option value="vendor">Shared with company</option>
+                    <option value="company">Shared with company</option>
                     <option value="customer">Shared with customer</option>
                   </select>
                   <button

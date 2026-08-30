@@ -6,7 +6,7 @@ namespace App\Model\Entity;
 use Cake\ORM\Entity;
 
 /**
- * Vendor Entity
+ * Company Entity
  *
  * @property int $id
  * @property string $code
@@ -36,11 +36,11 @@ use Cake\ORM\Entity;
  * @property \App\Model\Entity\RateCard[] $rate_cards
  * @property \App\Model\Entity\SparePart[] $spare_parts
  * @property \App\Model\Entity\Ticket[] $tickets
- * @property \App\Model\Entity\VendorAgreement[] $vendor_agreements
- * @property \App\Model\Entity\VendorInvoice[] $vendor_invoices
- * @property \App\Model\Entity\VendorJobTypeAlias[] $vendor_job_type_aliases
+ * @property \App\Model\Entity\CompanyAgreement[] $company_agreements
+ * @property \App\Model\Entity\CompanyInvoice[] $company_invoices
+ * @property \App\Model\Entity\CompanyJobTypeAlias[] $company_job_type_aliases
  */
-class Vendor extends Entity
+class Company extends Entity
 {
     /**
      * Fields that can be mass assigned using newEntity() or patchEntity().
@@ -78,8 +78,8 @@ class Vendor extends Entity
         'rate_cards' => true,
         'spare_parts' => true,
         'tickets' => true,
-        'vendor_agreements' => true,
-        'vendor_invoices' => true,
-        'vendor_job_type_aliases' => true,
+        'company_agreements' => true,
+        'company_invoices' => true,
+        'company_job_type_aliases' => true,
     ];
 }

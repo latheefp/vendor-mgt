@@ -9,8 +9,8 @@ use Cake\ORM\Entity;
  * RateCard Entity
  *
  * @property int $id
- * @property int $vendor_id
- * @property int|null $vendor_agreement_id
+ * @property int $company_id
+ * @property int|null $company_agreement_id
  * @property string $name
  * @property int $version
  * @property string $status
@@ -23,8 +23,8 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime $modified
  *
- * @property \App\Model\Entity\Vendor $vendor
- * @property \App\Model\Entity\VendorAgreement $vendor_agreement
+ * @property \App\Model\Entity\Company $company
+ * @property \App\Model\Entity\CompanyAgreement $company_agreement
  * @property \App\Model\Entity\PublishedByUser $published_by_user
  * @property \App\Model\Entity\RateCardItem[] $rate_card_items
  * @property \App\Model\Entity\SlaRule[] $sla_rules
@@ -43,8 +43,8 @@ class RateCard extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
-        'vendor_agreement_id' => true,
+        'company_id' => true,
+        'company_agreement_id' => true,
         'name' => true,
         'version' => true,
         'status' => true,
@@ -56,8 +56,8 @@ class RateCard extends Entity
         'notes' => true,
         'created' => true,
         'modified' => true,
-        'vendor' => true,
-        'vendor_agreement' => true,
+        'company' => true,
+        'company_agreement' => true,
         'published_by_user' => true,
         'rate_card_items' => true,
         'sla_rules' => true,

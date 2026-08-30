@@ -42,7 +42,7 @@ export function RatePreviewPanel() {
     try {
       setResult(
         await api.ratePreview({
-          vendor_id: 1,
+          company_id: 1,
           job_type: form.job_type,
           warranty_scope: form.warranty_scope,
           size_inch: Number(form.size_inch),
@@ -74,8 +74,8 @@ export function RatePreviewPanel() {
 
         <div className="space-y-3">
           <Labelled label="Complaint type">
-            {/* The vendor's own wording. The backend maps it through
-                vendor_job_type_aliases, so "Service" and "Breakdown" both
+            {/* The company's own wording. The backend maps it through
+                company_job_type_aliases, so "Service" and "Breakdown" both
                 resolve without a code change. */}
             <select
               value={form.job_type}
@@ -221,9 +221,9 @@ export function RatePreviewPanel() {
             <dl className="mt-5 space-y-1.5 border-t border-slate-200 pt-4 text-sm dark:border-slate-800">
               {(
                 [
-                  ['vendor_receivable', 'Billed to vendor'],
+                  ['company_receivable', 'Billed to company'],
                   ['customer_collection', 'Collected from customer'],
-                  ['vendor_payable', 'Royalty owed to vendor'],
+                  ['company_payable', 'Royalty owed to company'],
                   ['technician_payable', 'Paid to technician'],
                 ] as const
               ).map(([key, label]) =>

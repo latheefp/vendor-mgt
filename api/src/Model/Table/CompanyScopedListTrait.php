@@ -16,7 +16,7 @@ use Cake\ORM\RulesChecker;
  * old `isUnique(['code'])` would reject a company's override as a
  * duplicate of the shared row it is meant to shadow.
  *
- * The database enforces this too, on COALESCE(vendor_id, 0). The rule here
+ * The database enforces this too, on COALESCE(company_id, 0). The rule here
  * exists so the failure arrives as a field error on a form rather than as
  * a driver exception.
  */
@@ -27,8 +27,8 @@ trait CompanyScopedListTrait
      */
     protected function addCompanyScope(): void
     {
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             // Optional: a null owner is the shared baseline, not a missing
             // relationship, and marking it required would reject every
             // shared row on save.
@@ -43,9 +43,9 @@ trait CompanyScopedListTrait
     {
         $rules->add(
             $rules->isUnique(
-                ['code', 'vendor_id'],
+                ['code', 'company_id'],
                 // Without this, two shared rows both coded 'service' pass
-                // the rule: Cake follows SQL and treats NULL vendor_id as
+                // the rule: Cake follows SQL and treats NULL company_id as
                 // never equal to itself. The database index uses COALESCE
                 // for the same reason.
                 ['allowMultipleNulls' => false],
@@ -57,7 +57,7 @@ trait CompanyScopedListTrait
             ],
         );
 
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
 
         return $rules;
     }
@@ -70,20 +70,20 @@ trait CompanyScopedListTrait
      * needs. Use CompanyConfigRepository::masterList() for the resolved
      * answer.
      *
-     * @param array{vendor_id?: int|null} $options
+     * @param array{company_id?: int|null} $options
      */
     public function findForCompany(SelectQuery $query, array $options = []): SelectQuery
     {
-        $vendorId = $options['vendor_id'] ?? null;
+        $companyId = $options['company_id'] ?? null;
 
-        if ($vendorId === null) {
-            return $query->where([$this->getAlias() . '.vendor_id IS' => null]);
+        if ($companyId === null) {
+            return $query->where([$this->getAlias() . '.company_id IS' => null]);
         }
 
         return $query->where([
             'OR' => [
-                $this->getAlias() . '.vendor_id IS' => null,
-                $this->getAlias() . '.vendor_id' => (int)$vendorId,
+                $this->getAlias() . '.company_id IS' => null,
+                $this->getAlias() . '.company_id' => (int)$companyId,
             ],
         ]);
     }
@@ -93,6 +93,6 @@ trait CompanyScopedListTrait
      */
     public function findShared(SelectQuery $query): SelectQuery
     {
-        return $query->where([$this->getAlias() . '.vendor_id IS' => null]);
+        return $query->where([$this->getAlias() . '.company_id IS' => null]);
     }
 }

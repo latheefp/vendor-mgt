@@ -9,34 +9,34 @@ use Cake\ORM\Table;
 use Cake\Validation\Validator;
 
 /**
- * Vendors Model
+ * Companies Model
  *
  * @property \App\Model\Table\BrandsTable&\Cake\ORM\Association\HasMany $Brands
  * @property \App\Model\Table\ProductsTable&\Cake\ORM\Association\HasMany $Products
  * @property \App\Model\Table\RateCardsTable&\Cake\ORM\Association\HasMany $RateCards
  * @property \App\Model\Table\SparePartsTable&\Cake\ORM\Association\HasMany $SpareParts
  * @property \App\Model\Table\TicketsTable&\Cake\ORM\Association\HasMany $Tickets
- * @property \App\Model\Table\VendorAgreementsTable&\Cake\ORM\Association\HasMany $VendorAgreements
- * @property \App\Model\Table\VendorInvoicesTable&\Cake\ORM\Association\HasMany $VendorInvoices
- * @property \App\Model\Table\VendorJobTypeAliasesTable&\Cake\ORM\Association\HasMany $VendorJobTypeAliases
+ * @property \App\Model\Table\CompanyAgreementsTable&\Cake\ORM\Association\HasMany $CompanyAgreements
+ * @property \App\Model\Table\CompanyInvoicesTable&\Cake\ORM\Association\HasMany $CompanyInvoices
+ * @property \App\Model\Table\CompanyJobTypeAliasesTable&\Cake\ORM\Association\HasMany $CompanyJobTypeAliases
  *
- * @method \App\Model\Entity\Vendor newEmptyEntity()
- * @method \App\Model\Entity\Vendor newEntity(array $data, array $options = [])
- * @method array<\App\Model\Entity\Vendor> newEntities(array $data, array $options = [])
- * @method \App\Model\Entity\Vendor get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
- * @method \App\Model\Entity\Vendor findOrCreate($search, ?callable $callback = null, array $options = [])
- * @method \App\Model\Entity\Vendor patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
- * @method array<\App\Model\Entity\Vendor> patchEntities(iterable $entities, array $data, array $options = [])
- * @method \App\Model\Entity\Vendor|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
- * @method \App\Model\Entity\Vendor saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
- * @method iterable<\App\Model\Entity\Vendor>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Vendor>|false saveMany(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\Vendor>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Vendor> saveManyOrFail(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\Vendor>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Vendor>|false deleteMany(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\Vendor>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Vendor> deleteManyOrFail(iterable $entities, array $options = [])
+ * @method \App\Model\Entity\Company newEmptyEntity()
+ * @method \App\Model\Entity\Company newEntity(array $data, array $options = [])
+ * @method array<\App\Model\Entity\Company> newEntities(array $data, array $options = [])
+ * @method \App\Model\Entity\Company get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
+ * @method \App\Model\Entity\Company findOrCreate($search, ?callable $callback = null, array $options = [])
+ * @method \App\Model\Entity\Company patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
+ * @method array<\App\Model\Entity\Company> patchEntities(iterable $entities, array $data, array $options = [])
+ * @method \App\Model\Entity\Company|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method \App\Model\Entity\Company saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method iterable<\App\Model\Entity\Company>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Company>|false saveMany(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\Company>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Company> saveManyOrFail(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\Company>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Company>|false deleteMany(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\Company>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\Company> deleteManyOrFail(iterable $entities, array $options = [])
  *
  * @mixin \Cake\ORM\Behavior\TimestampBehavior
  */
-class VendorsTable extends Table
+class CompaniesTable extends Table
 {
     /**
      * Initialize method
@@ -48,35 +48,35 @@ class VendorsTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('vendors');
+        $this->setTable('companies');
         $this->setDisplayField('name');
         $this->setPrimaryKey('id');
 
         $this->addBehavior('Timestamp');
 
         $this->hasMany('Brands', [
-            'foreignKey' => 'vendor_id',
+            'foreignKey' => 'company_id',
         ]);
         $this->hasMany('Products', [
-            'foreignKey' => 'vendor_id',
+            'foreignKey' => 'company_id',
         ]);
         $this->hasMany('RateCards', [
-            'foreignKey' => 'vendor_id',
+            'foreignKey' => 'company_id',
         ]);
         $this->hasMany('SpareParts', [
-            'foreignKey' => 'vendor_id',
+            'foreignKey' => 'company_id',
         ]);
         $this->hasMany('Tickets', [
-            'foreignKey' => 'vendor_id',
+            'foreignKey' => 'company_id',
         ]);
-        $this->hasMany('VendorAgreements', [
-            'foreignKey' => 'vendor_id',
+        $this->hasMany('CompanyAgreements', [
+            'foreignKey' => 'company_id',
         ]);
-        $this->hasMany('VendorInvoices', [
-            'foreignKey' => 'vendor_id',
+        $this->hasMany('CompanyInvoices', [
+            'foreignKey' => 'company_id',
         ]);
-        $this->hasMany('VendorJobTypeAliases', [
-            'foreignKey' => 'vendor_id',
+        $this->hasMany('CompanyJobTypeAliases', [
+            'foreignKey' => 'company_id',
         ]);
     }
 

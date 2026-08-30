@@ -8,6 +8,7 @@ use App\Domain\Exception\TicketTransitionException;
 use Cake\Datasource\Exception\RecordNotFoundException;
 use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
+use Throwable;
 
 /**
  * The ticket lifecycle: intake, assignment, holds and closure.
@@ -51,6 +52,51 @@ class TicketWorkflow
      */
     public const TERMINAL_STATUSES = ['closed', 'cancelled', 'rejected'];
 
+    /**
+     * The twelve statuses folded into the five a manager actually reports on.
+     *
+     * A per-company board with a column for every status is unreadable and,
+     * worse, invites the wrong comparison — "scheduled" against "visited"
+     * says nothing, while "waiting on us" against "closed" is the whole
+     * question. The grouping is here rather than in the dashboard query
+     * because it is a statement about the lifecycle, and a second copy
+     * written for the next report would drift the moment a status is added.
+     *
+     * `rejected` sits with `cancelled`: both are jobs that will never earn,
+     * and separating them flatters the closed rate.
+     *
+     * @var array<string, list<string>>
+     */
+    public const STATUS_BUCKETS = [
+        // Accepted, nobody has been on site yet. This is the queue.
+        'pending' => ['new', 'assigned', 'contacted', 'scheduled', 'reopened'],
+        // A technician has engaged with it.
+        'in_progress' => ['visited', 'in_progress', 'awaiting_parts'],
+        // Live, but the SLA clock may be paused. Kept apart from pending
+        // because a held job is not one the desk has failed to action.
+        'on_hold' => ['on_hold'],
+        'closed' => ['closed'],
+        'cancelled' => ['cancelled', 'rejected'],
+    ];
+
+    /**
+     * Which bucket a status reports under.
+     *
+     * An unrecognised status counts as pending rather than vanishing: a
+     * total that silently drops rows is worse than one that puts a new
+     * status in the most visible column until someone classifies it.
+     */
+    public static function statusBucket(string $status): string
+    {
+        foreach (self::STATUS_BUCKETS as $bucket => $statuses) {
+            if (in_array($status, $statuses, true)) {
+                return $bucket;
+            }
+        }
+
+        return 'pending';
+    }
+
     private const TRANSITIONS = [
         'new' => ['assigned', 'on_hold', 'cancelled', 'rejected'],
         'assigned' => ['contacted', 'scheduled', 'visited', 'on_hold', 'cancelled', 'rejected'],
@@ -86,12 +132,12 @@ class TicketWorkflow
      */
     public function intake(array $data, ?int $actorUserId = null): array
     {
-        $vendorId = (int)($data['vendor_id'] ?? 0);
-        if ($vendorId <= 0) {
-            return ['ok' => false, 'errors' => ['vendor_id' => ['Select the company this job belongs to.']]];
+        $companyId = (int)($data['company_id'] ?? 0);
+        if ($companyId <= 0) {
+            return ['ok' => false, 'errors' => ['company_id' => ['Select the company this job belongs to.']]];
         }
 
-        $errors = $this->intakeErrors($vendorId, $data);
+        $errors = $this->intakeErrors($companyId, $data);
         if ($errors !== []) {
             return ['ok' => false, 'errors' => $errors];
         }
@@ -101,7 +147,7 @@ class TicketWorkflow
             return ['ok' => false, 'errors' => $customer];
         }
 
-        // The vendor may have handed us the job hours before it reached
+        // The company may have handed us the job hours before it reached
         // this form. Every SLA clock runs from when they did, not from now.
         $receivedAt = isset($data['received_at'])
             ? new DateTime((string)$data['received_at'])
@@ -113,7 +159,7 @@ class TicketWorkflow
         $connection = $tickets->getConnection();
 
         return $connection->transactional(
-            function () use ($tickets, $vendorId, $customer, $data, $receivedAt, $onDate, $actorUserId): array {
+            function () use ($tickets, $companyId, $customer, $data, $receivedAt, $onDate, $actorUserId): array {
                 $agreementId = null;
                 $rateCardId = null;
                 $contactDue = null;
@@ -121,11 +167,11 @@ class TicketWorkflow
                 $closeDue = null;
 
                 try {
-                    $terms = $this->rates->agreementTerms($vendorId, $onDate);
+                    $terms = $this->rates->agreementTerms($companyId, $onDate);
                     $windows = $terms->windows();
 
                     $agreementId = $terms->id;
-                    $rateCardId = $this->rates->activeCardId($vendorId, $onDate);
+                    $rateCardId = $this->rates->activeCardId($companyId, $onDate);
 
                     // Due dates come from this company's agreement, not from
                     // constants. Dianora is 2/48/48; the next company will
@@ -141,13 +187,13 @@ class TicketWorkflow
                     // into a refused customer.
                 }
 
-                $ticketNo = $this->numbers->next($vendorId, $receivedAt->format('Ym'));
+                $ticketNo = $this->numbers->next($companyId, $receivedAt->format('Ym'));
 
                 $ticket = $tickets->newEntity([
                     'ticket_no' => $ticketNo,
-                    'vendor_id' => $vendorId,
-                    'vendor_ticket_ref' => $data['vendor_ticket_ref'] ?? null,
-                    'vendor_agreement_id' => $agreementId,
+                    'company_id' => $companyId,
+                    'company_ticket_ref' => $data['company_ticket_ref'] ?? null,
+                    'company_agreement_id' => $agreementId,
                     'rate_card_id' => $rateCardId,
                     'service_center_id' => (int)$data['service_center_id'],
                     'customer_id' => $customer,
@@ -168,10 +214,10 @@ class TicketWorkflow
                     'contact_due_at' => $contactDue,
                     'visit_due_at' => $visitDue,
                     'close_due_at' => $closeDue,
-                    'vendor_branch_label' => $data['vendor_branch_label'] ?? null,
-                    'vendor_complaint_type' => $data['vendor_complaint_type'] ?? null,
+                    'company_branch_label' => $data['company_branch_label'] ?? null,
+                    'company_complaint_type' => $data['company_complaint_type'] ?? null,
                     'video_proof_required' => $this->videoProofRequired($data),
-                    'vendor_payload' => $data['vendor_payload'] ?? null,
+                    'company_payload' => $data['company_payload'] ?? null,
                     'source' => $data['source'] ?? 'desk',
                     'created_by_user_id' => $actorUserId,
                 ]);
@@ -182,12 +228,12 @@ class TicketWorkflow
                     return ['ok' => false, 'errors' => $ticket->getErrors()];
                 }
 
-                $this->flagRepeatComplaint($ticket, $vendorId, $onDate);
+                $this->flagRepeatComplaint($ticket, $companyId, $onDate);
 
                 $this->logEvent($ticket->id, 'created', null, 'new', $actorUserId, 'Ticket taken in.', [
                     'source' => $ticket->source,
                     'rate_card_id' => $rateCardId,
-                    'vendor_agreement_id' => $agreementId,
+                    'company_agreement_id' => $agreementId,
                 ]);
 
                 return ['ok' => true, 'ticket_id' => (int)$ticket->id, 'ticket_no' => $ticketNo];
@@ -195,13 +241,122 @@ class TicketWorkflow
         );
     }
 
+    // -----------------------------------------------------------------
+    // update
+    // -----------------------------------------------------------------
+
+    /**
+     * Update an existing ticket.
+     *
+     * @param array<string, mixed> $data
+     * @return array{ok: true, ticket_id: int, ticket_no: string}|array{ok: false, errors: array<string, mixed>}
+     */
+    public function update(int $ticketId, array $data, ?int $actorUserId = null): array
+    {
+        $tickets = $this->fetchTable('Tickets');
+        $ticket = $tickets->find()->where(['id' => $ticketId])->first();
+
+        if ($ticket === null) {
+            return ['ok' => false, 'errors' => ['id' => ['Ticket not found.']]];
+        }
+
+        if (in_array($ticket->status, self::TERMINAL_STATUSES, true)) {
+            return ['ok' => false, 'errors' => ['status' => ['Closed, cancelled or rejected tickets cannot be edited.']]];
+        }
+
+        $companyId = (int)($data['company_id'] ?? $ticket->company_id);
+        if ($companyId <= 0) {
+            return ['ok' => false, 'errors' => ['company_id' => ['Select the company this job belongs to.']]];
+        }
+
+        $errors = $this->intakeErrors($companyId, $data);
+        if ($errors !== []) {
+            return ['ok' => false, 'errors' => $errors];
+        }
+
+        $customer = $this->resolveCustomerForUpdate($ticket, $data);
+        if (!is_int($customer)) {
+            return ['ok' => false, 'errors' => $customer];
+        }
+
+        $connection = $tickets->getConnection();
+
+        return $connection->transactional(
+            function () use ($tickets, $ticket, $companyId, $customer, $data, $actorUserId): array {
+                $fieldsToUpdate = [
+                    'company_id' => $companyId,
+                    'service_center_id' => (int)$data['service_center_id'],
+                    'job_type_id' => (int)$data['job_type_id'],
+                    'warranty_scope' => $data['warranty_scope'] ?? $ticket->warranty_scope,
+                    'company_ticket_ref' => $data['company_ticket_ref'] ?? null,
+                    'brand_id' => $data['brand_id'] ?? null,
+                    'product_category_id' => $data['product_category_id'] ?? null,
+                    'model_no' => $data['model_no'] ?? null,
+                    'serial_no' => $data['serial_no'] ?? null,
+                    'size_inch' => $data['size_inch'] ?? null,
+                    'purchase_date' => $data['purchase_date'] ?? null,
+                    'symptom_id' => $data['symptom_id'] ?? null,
+                    'video_proof_required' => $this->videoProofRequired($data),
+                    'reported_issue' => $data['reported_issue'] ?? null,
+                    'priority' => $data['priority'] ?? $ticket->priority,
+                    'customer_id' => $customer,
+                ];
+
+                $patched = $tickets->patchEntity($ticket, $fieldsToUpdate);
+
+                if (!$tickets->save($patched)) {
+                    return ['ok' => false, 'errors' => $patched->getErrors()];
+                }
+
+                $this->logEvent($patched->id, 'updated', null, $patched->status, $actorUserId, 'Ticket details updated.', [
+                    'updated_fields' => array_keys($fieldsToUpdate),
+                ]);
+
+                return ['ok' => true, 'ticket_id' => (int)$patched->id, 'ticket_no' => (string)$patched->ticket_no];
+            }
+        );
+    }
+
+    /**
+     * @param object $ticket
+     * @param array<string, mixed> $data
+     * @return int|array<string, list<string>> customer id, or field errors
+     */
+    private function resolveCustomerForUpdate(object $ticket, array $data): int|array
+    {
+        if (!empty($data['customer_id'])) {
+            return (int)$data['customer_id'];
+        }
+
+        $customerData = $data['customer'] ?? null;
+        if (!is_array($customerData)) {
+            return ['customer' => ['Provide customer details or an existing customer_id.']];
+        }
+
+        $customers = $this->fetchTable('Customers');
+
+        if (!empty($ticket->customer_id)) {
+            $existing = $customers->find()->where(['id' => $ticket->customer_id])->first();
+            if ($existing !== null) {
+                $patched = $customers->patchEntity($existing, $customerData);
+                if ($customers->save($patched)) {
+                    return (int)$existing->id;
+                }
+                return ['customer' => ['The customer record could not be updated.']];
+            }
+        }
+
+        return $this->resolveCustomer($data);
+    }
+
+
     /**
      * Intake requirements, as this company defines them.
      *
      * @param array<string, mixed> $data
      * @return array<string, list<string>>
      */
-    private function intakeErrors(int $vendorId, array $data): array
+    private function intakeErrors(int $companyId, array $data): array
     {
         $errors = [];
 
@@ -212,7 +367,7 @@ class TicketWorkflow
             $errors['job_type_id'] = ['Select what kind of job this is.'];
         }
 
-        $settings = $this->config->settings($vendorId);
+        $settings = $this->config->settings($companyId);
 
         // Warranty status is decided from the serial number and the bill
         // date. A company that reimburses in-warranty work without either
@@ -226,6 +381,63 @@ class TicketWorkflow
         if ($settings->bool(SettingCatalog::TICKET_REQUIRE_BILL_DATE, true)) {
             if (trim((string)($data['purchase_date'] ?? '')) === '') {
                 $errors['purchase_date'] = ['This company requires the purchase date at intake.'];
+            }
+        }
+
+        return $errors + $this->futureDateErrors($data);
+    }
+
+    /**
+     * Refuse an intake date that has not happened yet.
+     *
+     * Both dates are typed in at intake and both decide what the job can
+     * later be closed for. `received_at` picks the agreement and the rate
+     * card in force, and starts every SLA clock; `purchase_date` is what
+     * settles warranty scope, which decides who pays at all.
+     *
+     * A future value does not fail loudly. It produces a ticket that looks
+     * ordinary until closure, and then prices against terms not yet in
+     * force, or runs the SLA clock backwards so a job appears to have been
+     * closed before it arrived. Neither is recoverable once charges freeze,
+     * so it is refused at the only point where the date is still cheap to
+     * correct.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, list<string>>
+     */
+    private function futureDateErrors(array $data): array
+    {
+        // The company's clock is not ours. A job handed over seconds ago can
+        // reach us stamped slightly ahead, and refusing that is a false
+        // alarm on a real intake, so only a meaningful lead is rejected.
+        $limit = DateTime::now()->addMinutes(5);
+
+        $messages = [
+            'received_at' => 'A job cannot have been received in the future. '
+                . 'Use the date on the company\'s complaint, or leave it blank for now.',
+            'purchase_date' => 'The purchase date cannot be in the future. '
+                . 'It is read off the customer\'s bill.',
+        ];
+
+        $errors = [];
+
+        foreach ($messages as $field => $message) {
+            $raw = trim((string)($data[$field] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+
+            try {
+                $value = new DateTime($raw);
+            } catch (Throwable) {
+                // Caught here rather than left to the constructor further
+                // down, which would surface as a 500 on a typo.
+                $errors[$field] = ['That is not a date this system can read.'];
+                continue;
+            }
+
+            if ($value->greaterThan($limit)) {
+                $errors[$field] = [$message];
             }
         }
 
@@ -268,10 +480,10 @@ class TicketWorkflow
      * constant. Matching is on customer plus unit: the same customer with a
      * different television is a new job, not a repeat.
      */
-    private function flagRepeatComplaint(object $ticket, int $vendorId, string $onDate): void
+    private function flagRepeatComplaint(object $ticket, int $companyId, string $onDate): void
     {
         try {
-            $terms = $this->rates->agreementTerms($vendorId, $onDate);
+            $terms = $this->rates->agreementTerms($companyId, $onDate);
         } catch (RecordNotFoundException) {
             return;
         }
@@ -281,7 +493,7 @@ class TicketWorkflow
             ->format('Y-m-d H:i:s');
 
         $conditions = [
-            'vendor_id' => $vendorId,
+            'company_id' => $companyId,
             'customer_id' => $ticket->customer_id,
             'id !=' => $ticket->id,
             'closed_at >=' => $since,
@@ -415,8 +627,13 @@ class TicketWorkflow
 
         // Both checks are advisory: a dispatcher who knows the technician
         // is finishing early, or is the only one nearby, can override. What
-        // matters is that the override is deliberate and recorded.
-        if ($errors !== [] && !$force) {
+        // matters is that the override is deliberate and recorded. A
+        // company can also switch the checks off altogether, which is a
+        // standing decision rather than a per-assignment one.
+        $enforceRules = $this->config->settings((int)$ticket->company_id)
+            ->bool(SettingCatalog::ASSIGNMENT_ENFORCE_TECHNICIAN_RULES, true);
+
+        if ($errors !== [] && $enforceRules && !$force) {
             return ['ok' => false, 'errors' => $errors];
         }
 
@@ -434,13 +651,20 @@ class TicketWorkflow
 
         $tickets->saveOrFail($ticket);
 
+        $overrideNote = match (true) {
+            $errors === [] => '',
+            !$enforceRules => ' Assignment rules are not enforced for this company.',
+            default => ' Overridden by the dispatcher.',
+        };
+
         $this->logEvent($ticketId, 'assigned', $from, $to, $actorUserId, sprintf(
             'Assigned to %s.%s',
             $technician->name,
-            $errors !== [] ? ' Overridden by the dispatcher.' : '',
+            $overrideNote,
         ), [
             'technician_id' => $technicianId,
-            'overridden' => $errors !== [],
+            'overridden' => $errors !== [] && $force,
+            'policy_enforced' => $enforceRules,
             'override_warnings' => $errors,
         ]);
 
@@ -511,7 +735,7 @@ class TicketWorkflow
                 'id' => $holdReasonId,
                 // A company may only use a reason from its own resolved
                 // list — its own overrides plus the shared baseline.
-                'OR' => ['vendor_id IS' => null, 'vendor_id' => $ticket->vendor_id],
+                'OR' => ['company_id IS' => null, 'company_id' => $ticket->company_id],
             ])
             ->first();
 
@@ -550,7 +774,7 @@ class TicketWorkflow
             'hold_id' => (int)$hold->id,
             'reason_code' => $reason->code,
             'pauses_sla' => (bool)$reason->pauses_sla,
-            'requires_vendor_notice' => (bool)$reason->requires_vendor_notice,
+            'requires_company_notice' => (bool)$reason->requires_company_notice,
         ]);
 
         return ['ok' => true, 'hold_id' => (int)$hold->id];
@@ -658,9 +882,9 @@ class TicketWorkflow
         // Internal by default. A note shared with the company is a statement
         // we can be held to, so it has to be chosen rather than defaulted
         // into.
-        if (!in_array($visibility, ['internal', 'vendor', 'customer'], true)) {
+        if (!in_array($visibility, ['internal', 'company', 'customer'], true)) {
             return ['ok' => false, 'errors' => ['visibility' => [
-                'Use internal, vendor or customer.',
+                'Use internal, company or customer.',
             ]]];
         }
 

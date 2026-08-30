@@ -17,10 +17,10 @@ use Cake\Validation\Validator;
  * @property \App\Model\Table\SlaRulesTable&\Cake\ORM\Association\BelongsTo $SlaRules
  * @property \App\Model\Table\TechnicianRatesTable&\Cake\ORM\Association\BelongsTo $TechnicianRates
  * @property \App\Model\Table\TicketSparesTable&\Cake\ORM\Association\BelongsTo $TicketSpares
- * @property \App\Model\Table\VendorAgreementsTable&\Cake\ORM\Association\BelongsTo $VendorAgreements
+ * @property \App\Model\Table\CompanyAgreementsTable&\Cake\ORM\Association\BelongsTo $CompanyAgreements
  * @property \App\Model\Table\UsersTable&\Cake\ORM\Association\BelongsTo $ComputedByUsers
  * @property \App\Model\Table\TechnicianPayoutLinesTable&\Cake\ORM\Association\HasMany $TechnicianPayoutLines
- * @property \App\Model\Table\VendorInvoiceLinesTable&\Cake\ORM\Association\HasMany $VendorInvoiceLines
+ * @property \App\Model\Table\CompanyInvoiceLinesTable&\Cake\ORM\Association\HasMany $CompanyInvoiceLines
  *
  * @method \App\Model\Entity\TicketCharge newEmptyEntity()
  * @method \App\Model\Entity\TicketCharge newEntity(array $data, array $options = [])
@@ -75,8 +75,8 @@ class TicketChargesTable extends Table
         $this->belongsTo('TicketSpares', [
             'foreignKey' => 'ticket_spare_id',
         ]);
-        $this->belongsTo('VendorAgreements', [
-            'foreignKey' => 'vendor_agreement_id',
+        $this->belongsTo('CompanyAgreements', [
+            'foreignKey' => 'company_agreement_id',
         ]);
         $this->belongsTo('ComputedByUsers', [
             'foreignKey' => 'computed_by_user_id',
@@ -85,7 +85,7 @@ class TicketChargesTable extends Table
         $this->hasMany('TechnicianPayoutLines', [
             'foreignKey' => 'ticket_charge_id',
         ]);
-        $this->hasMany('VendorInvoiceLines', [
+        $this->hasMany('CompanyInvoiceLines', [
             'foreignKey' => 'ticket_charge_id',
         ]);
     }
@@ -145,7 +145,7 @@ class TicketChargesTable extends Table
             ->allowEmptyString('ticket_spare_id');
 
         $validator
-            ->allowEmptyString('vendor_agreement_id');
+            ->allowEmptyString('company_agreement_id');
 
         $validator
             ->allowEmptyString('calc_snapshot');
@@ -189,7 +189,7 @@ class TicketChargesTable extends Table
         $rules->add($rules->existsIn(['sla_rule_id'], 'SlaRules'), ['errorField' => 'sla_rule_id']);
         $rules->add($rules->existsIn(['technician_rate_id'], 'TechnicianRates'), ['errorField' => 'technician_rate_id']);
         $rules->add($rules->existsIn(['ticket_spare_id'], 'TicketSpares'), ['errorField' => 'ticket_spare_id']);
-        $rules->add($rules->existsIn(['vendor_agreement_id'], 'VendorAgreements'), ['errorField' => 'vendor_agreement_id']);
+        $rules->add($rules->existsIn(['company_agreement_id'], 'CompanyAgreements'), ['errorField' => 'company_agreement_id']);
         $rules->add($rules->existsIn(['computed_by_user_id'], 'ComputedByUsers'), ['errorField' => 'computed_by_user_id']);
 
         return $rules;

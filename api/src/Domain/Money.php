@@ -92,7 +92,7 @@ final readonly class Money implements JsonSerializable, Stringable
 
     /**
      * A percentage of this amount, given as a decimal string like "10" or
-     * "12.50" — the form vendor agreements are actually written in.
+     * "12.50" — the form company agreements are actually written in.
      */
     public function percentage(string $percent): self
     {

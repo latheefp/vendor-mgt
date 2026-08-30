@@ -38,8 +38,8 @@ final readonly class TechnicianRateData
         public int $id,
         public PayoutModel $model = PayoutModel::FlatPerJob,
         public ?Money $flatAmount = null,
-        /** Decimal percent string, used when model is PctOfVendor. */
-        public ?string $pctOfVendor = null,
+        /** Decimal percent string, used when model is PctOfCompany. */
+        public ?string $pctOfCompany = null,
         public ?Money $monthlySalary = null,
         /** Kilometres we do not pay the technician for. */
         public float $travelFreeKm = 0.0,
@@ -74,7 +74,7 @@ final readonly class TechnicianRateData
             id: $this->id,
             model: $this->model,
             flatAmount: $this->flatAmount,
-            pctOfVendor: $this->pctOfVendor,
+            pctOfCompany: $this->pctOfCompany,
             monthlySalary: $this->monthlySalary,
             travelFreeKm: $this->travelFreeKm,
             travelRatePerKm: $this->travelRatePerKm,
@@ -121,7 +121,7 @@ final readonly class TechnicianRateData
     {
         return match ($this->model) {
             PayoutModel::FlatPerJob => $this->flatAmount ?? Money::zero(),
-            PayoutModel::PctOfVendor => $serviceCharge->percentage($this->pctOfVendor ?? '0'),
+            PayoutModel::PctOfCompany => $serviceCharge->percentage($this->pctOfCompany ?? '0'),
             PayoutModel::Salaried => Money::zero(),
         };
     }
@@ -135,7 +135,7 @@ final readonly class TechnicianRateData
             'technician_rate_id' => $this->id,
             'model' => $this->model->value,
             'flat_amount_paise' => $this->flatAmount?->paise,
-            'pct_of_vendor' => $this->pctOfVendor,
+            'pct_of_company' => $this->pctOfCompany,
             'monthly_salary_paise' => $this->monthlySalary?->paise,
             'travel_free_km' => $this->travelFreeKm,
             'travel_rate_per_km_paise' => $this->travelRate()->paise,

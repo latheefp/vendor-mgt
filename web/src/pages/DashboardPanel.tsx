@@ -5,6 +5,24 @@ interface DashboardPanelProps {
   onNavigate: (section: 'tickets' | 'spares' | 'invoicing' | 'pricing' | 'settings', tab?: string) => void
 }
 
+/**
+ * The five reporting buckets, in lifecycle order, mirroring
+ * `TicketWorkflow::STATUS_BUCKETS` on the backend.
+ *
+ * Only the labels and colours live here — the grouping itself is the
+ * server's, arriving pre-bucketed on `by_company`. Re-deriving it from raw
+ * statuses in the client would give the dashboard its own opinion of what
+ * "pending" means, and the two would part company the first time a status
+ * is added.
+ */
+const BUCKETS = [
+  { key: 'pending', label: 'Pending (queued)', bar: 'bg-blue-500', text: 'text-blue-600' },
+  { key: 'in_progress', label: 'In progress (field work)', bar: 'bg-amber-500', text: 'text-amber-600' },
+  { key: 'on_hold', label: 'On hold (customer / parts)', bar: 'bg-purple-500', text: 'text-purple-600' },
+  { key: 'closed', label: 'Closed', bar: 'bg-emerald-500', text: 'text-emerald-600' },
+  { key: 'cancelled', label: 'Cancelled / rejected', bar: 'bg-slate-400', text: 'text-slate-500' },
+] as const
+
 export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,16 +51,24 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
     )
   }
 
-  const byStatus = stats?.by_status ?? {
-    received: 0,
-    assigned: 0,
-    in_progress: 0,
-    on_hold: 0,
-    closed: 0,
-    cancelled: 0,
-  }
+  const companies = stats?.by_company ?? []
 
+  // Every ticket carries a company (the column is NOT NULL), so summing the
+  // per-company rows gives the same totals the whole-estate query would —
+  // from one set of numbers, which is what stops the pipeline bars and the
+  // table below them disagreeing on screen.
+  const pipeline = BUCKETS.map((bucket) => ({
+    ...bucket,
+    count: companies.reduce((sum, company) => sum + company[bucket.key], 0),
+  }))
+
+  // Guarded against zero so an empty estate renders 0% rather than NaN.
   const total = stats?.total_tickets || 1
+  const pct = (n: number) => Math.round((n / total) * 100)
+
+  // The whole in-progress bucket, not the bare `in_progress` status: a job
+  // that is on site or waiting on a part is just as much active field work.
+  const inProgress = pipeline.find((b) => b.key === 'in_progress')?.count ?? 0
 
   return (
     <div className="space-y-6">
@@ -79,7 +105,7 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
             {stats?.open_tickets ?? 0}
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {byStatus.in_progress} active in-progress
+            {inProgress} active in-progress
           </p>
         </div>
 
@@ -135,7 +161,7 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
         </div>
       </div>
 
-      {/* Main Grid: Ticket Statuses & Vendor Distribution */}
+      {/* Main Grid: Ticket Statuses & Company Distribution */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Ticket Status Breakdown */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
@@ -147,55 +173,19 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
           </p>
 
           <div className="space-y-4">
-            <div>
-              <div className="mb-1 flex justify-between text-xs font-medium">
-                <span className="text-slate-700 dark:text-slate-300">Received (Intake)</span>
-                <span className="font-semibold text-blue-600">{byStatus.received} ({Math.round((byStatus.received / total) * 100)}%)</span>
+            {pipeline.map((bucket) => (
+              <div key={bucket.key}>
+                <div className="mb-1 flex justify-between text-xs font-medium">
+                  <span className="text-slate-700 dark:text-slate-300">{bucket.label}</span>
+                  <span className={`font-semibold ${bucket.text}`}>
+                    {bucket.count} ({pct(bucket.count)}%)
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div className={`h-full ${bucket.bar}`} style={{ width: `${pct(bucket.count)}%` }} />
+                </div>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                <div className="h-full bg-blue-500" style={{ width: `${(byStatus.received / total) * 100}%` }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-1 flex justify-between text-xs font-medium">
-                <span className="text-slate-700 dark:text-slate-300">Assigned</span>
-                <span className="font-semibold text-indigo-600">{byStatus.assigned} ({Math.round((byStatus.assigned / total) * 100)}%)</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                <div className="h-full bg-indigo-500" style={{ width: `${(byStatus.assigned / total) * 100}%` }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-1 flex justify-between text-xs font-medium">
-                <span className="text-slate-700 dark:text-slate-300">In Progress (Field Work)</span>
-                <span className="font-semibold text-amber-600">{byStatus.in_progress} ({Math.round((byStatus.in_progress / total) * 100)}%)</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                <div className="h-full bg-amber-500" style={{ width: `${(byStatus.in_progress / total) * 100}%` }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-1 flex justify-between text-xs font-medium">
-                <span className="text-slate-700 dark:text-slate-300">On Hold (Customer / Parts)</span>
-                <span className="font-semibold text-purple-600">{byStatus.on_hold} ({Math.round((byStatus.on_hold / total) * 100)}%)</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                <div className="h-full bg-purple-500" style={{ width: `${(byStatus.on_hold / total) * 100}%` }} />
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-1 flex justify-between text-xs font-medium">
-                <span className="text-slate-700 dark:text-slate-300">Closed (Verified & Billed)</span>
-                <span className="font-semibold text-emerald-600">{byStatus.closed} ({Math.round((byStatus.closed / total) * 100)}%)</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                <div className="h-full bg-emerald-500" style={{ width: `${(byStatus.closed / total) * 100}%` }} />
-              </div>
-            </div>
+            ))}
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -214,32 +204,65 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
           </div>
         </div>
 
-        {/* Vendor Job Distribution */}
+        {/* Company Job Distribution */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            Vendor Distribution
+            Company Distribution
           </h2>
           <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
-            Job volume by principal company
+            Open work by principal company, busiest first
           </p>
 
           <div className="space-y-3">
-            {stats?.by_vendor && stats.by_vendor.length > 0 ? (
-              stats.by_vendor.map((v) => (
+            {companies.length > 0 ? (
+              companies.map((company) => (
                 <div
-                  key={v.vendor_id}
-                  className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/40"
+                  key={company.company_id}
+                  className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/40"
                 >
-                  <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                    {v.vendor_name}
-                  </span>
-                  <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800 dark:bg-brand-950/60 dark:text-brand-300">
-                    {v.count} jobs
-                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                      {company.company_name}
+                    </span>
+                    {/* Open, not total: a company with 200 closed jobs and
+                        nothing outstanding does not need attention today. */}
+                    <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800 dark:bg-brand-950/60 dark:text-brand-300">
+                      {company.open} open
+                    </span>
+                  </div>
+
+                  <dl className="mt-2.5 grid grid-cols-5 gap-1 text-center">
+                    {BUCKETS.map((bucket) => (
+                      <div key={bucket.key}>
+                        <dt
+                          className="truncate text-[10px] text-slate-500 dark:text-slate-400"
+                          title={bucket.label}
+                        >
+                          {bucket.label.split(' ')[0]}
+                        </dt>
+                        <dd
+                          className={`text-sm font-semibold tabular-nums ${
+                            company[bucket.key] > 0
+                              ? bucket.text
+                              : 'text-slate-300 dark:text-slate-700'
+                          }`}
+                        >
+                          {company[bucket.key]}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <button
+                    onClick={() => onNavigate('tickets')}
+                    className="mt-2 w-full rounded-lg border border-slate-200 py-1 text-[11px] font-medium text-slate-600 hover:bg-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                  >
+                    View {company.count} {company.company_code} tickets
+                  </button>
                 </div>
               ))
             ) : (
-              <div className="py-6 text-center text-xs text-slate-500">No vendor distribution data</div>
+              <div className="py-6 text-center text-xs text-slate-500">No company distribution data</div>
             )}
           </div>
 
@@ -248,7 +271,7 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
               onClick={() => onNavigate('settings', 'rate-cards')}
               className="w-full rounded-lg border border-slate-300 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              Manage Rate Cards & Vendors
+              Manage Rate Cards & Companies
             </button>
           </div>
         </div>

@@ -9,30 +9,30 @@ use Cake\ORM\Table;
 use Cake\Validation\Validator;
 
 /**
- * VendorInvoices Model
+ * CompanyInvoices Model
  *
- * @property \App\Model\Table\VendorsTable&\Cake\ORM\Association\BelongsTo $Vendors
- * @property \App\Model\Table\VendorAgreementsTable&\Cake\ORM\Association\BelongsTo $VendorAgreements
+ * @property \App\Model\Table\CompaniesTable&\Cake\ORM\Association\BelongsTo $Companies
+ * @property \App\Model\Table\CompanyAgreementsTable&\Cake\ORM\Association\BelongsTo $CompanyAgreements
  * @property \App\Model\Table\UsersTable&\Cake\ORM\Association\BelongsTo $CreatedByUsers
- * @property \App\Model\Table\VendorInvoiceLinesTable&\Cake\ORM\Association\HasMany $VendorInvoiceLines
+ * @property \App\Model\Table\CompanyInvoiceLinesTable&\Cake\ORM\Association\HasMany $CompanyInvoiceLines
  *
- * @method \App\Model\Entity\VendorInvoice newEmptyEntity()
- * @method \App\Model\Entity\VendorInvoice newEntity(array $data, array $options = [])
- * @method array<\App\Model\Entity\VendorInvoice> newEntities(array $data, array $options = [])
- * @method \App\Model\Entity\VendorInvoice get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
- * @method \App\Model\Entity\VendorInvoice findOrCreate($search, ?callable $callback = null, array $options = [])
- * @method \App\Model\Entity\VendorInvoice patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
- * @method array<\App\Model\Entity\VendorInvoice> patchEntities(iterable $entities, array $data, array $options = [])
- * @method \App\Model\Entity\VendorInvoice|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
- * @method \App\Model\Entity\VendorInvoice saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
- * @method iterable<\App\Model\Entity\VendorInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorInvoice>|false saveMany(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\VendorInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorInvoice> saveManyOrFail(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\VendorInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorInvoice>|false deleteMany(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\VendorInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorInvoice> deleteManyOrFail(iterable $entities, array $options = [])
+ * @method \App\Model\Entity\CompanyInvoice newEmptyEntity()
+ * @method \App\Model\Entity\CompanyInvoice newEntity(array $data, array $options = [])
+ * @method array<\App\Model\Entity\CompanyInvoice> newEntities(array $data, array $options = [])
+ * @method \App\Model\Entity\CompanyInvoice get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
+ * @method \App\Model\Entity\CompanyInvoice findOrCreate($search, ?callable $callback = null, array $options = [])
+ * @method \App\Model\Entity\CompanyInvoice patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
+ * @method array<\App\Model\Entity\CompanyInvoice> patchEntities(iterable $entities, array $data, array $options = [])
+ * @method \App\Model\Entity\CompanyInvoice|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method \App\Model\Entity\CompanyInvoice saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyInvoice>|false saveMany(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyInvoice> saveManyOrFail(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyInvoice>|false deleteMany(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyInvoice>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyInvoice> deleteManyOrFail(iterable $entities, array $options = [])
  *
  * @mixin \Cake\ORM\Behavior\TimestampBehavior
  */
-class VendorInvoicesTable extends Table
+class CompanyInvoicesTable extends Table
 {
     /**
      * Initialize method
@@ -44,25 +44,25 @@ class VendorInvoicesTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('vendor_invoices');
+        $this->setTable('company_invoices');
         $this->setDisplayField('invoice_no');
         $this->setPrimaryKey('id');
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             'joinType' => 'INNER',
         ]);
-        $this->belongsTo('VendorAgreements', [
-            'foreignKey' => 'vendor_agreement_id',
+        $this->belongsTo('CompanyAgreements', [
+            'foreignKey' => 'company_agreement_id',
         ]);
         $this->belongsTo('CreatedByUsers', [
             'foreignKey' => 'created_by_user_id',
             'className' => 'Users',
         ]);
-        $this->hasMany('VendorInvoiceLines', [
-            'foreignKey' => 'vendor_invoice_id',
+        $this->hasMany('CompanyInvoiceLines', [
+            'foreignKey' => 'company_invoice_id',
         ]);
     }
 
@@ -75,10 +75,10 @@ class VendorInvoicesTable extends Table
     public function validationDefault(Validator $validator): Validator
     {
         $validator
-            ->notEmptyString('vendor_id');
+            ->notEmptyString('company_id');
 
         $validator
-            ->allowEmptyString('vendor_agreement_id');
+            ->allowEmptyString('company_agreement_id');
 
         $validator
             ->scalar('invoice_no')
@@ -194,8 +194,8 @@ class VendorInvoicesTable extends Table
     public function buildRules(RulesChecker $rules): RulesChecker
     {
         $rules->add($rules->isUnique(['invoice_no']), ['errorField' => 'invoice_no']);
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
-        $rules->add($rules->existsIn(['vendor_agreement_id'], 'VendorAgreements'), ['errorField' => 'vendor_agreement_id']);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
+        $rules->add($rules->existsIn(['company_agreement_id'], 'CompanyAgreements'), ['errorField' => 'company_agreement_id']);
         $rules->add($rules->existsIn(['created_by_user_id'], 'CreatedByUsers'), ['errorField' => 'created_by_user_id']);
 
         return $rules;

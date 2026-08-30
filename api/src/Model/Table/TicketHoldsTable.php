@@ -108,13 +108,13 @@ class TicketHoldsTable extends Table
             ->allowEmptyString('ended_by_user_id');
 
         $validator
-            ->dateTime('vendor_notified_at')
-            ->allowEmptyDateTime('vendor_notified_at');
+            ->dateTime('company_notified_at')
+            ->allowEmptyDateTime('company_notified_at');
 
         $validator
-            ->scalar('vendor_notification_message_id')
-            ->maxLength('vendor_notification_message_id', 190)
-            ->allowEmptyString('vendor_notification_message_id');
+            ->scalar('company_notification_message_id')
+            ->maxLength('company_notification_message_id', 190)
+            ->allowEmptyString('company_notification_message_id');
 
         $validator
             ->allowEmptyString('hold_reason_id');

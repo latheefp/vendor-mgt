@@ -6,10 +6,10 @@ namespace App\Model\Entity;
 use Cake\ORM\Entity;
 
 /**
- * VendorInvoiceLine Entity
+ * CompanyInvoiceLine Entity
  *
  * @property int $id
- * @property int $vendor_invoice_id
+ * @property int $company_invoice_id
  * @property int|null $ticket_charge_id
  * @property int|null $ticket_id
  * @property string $line_type
@@ -26,12 +26,12 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime $modified
  *
- * @property \App\Model\Entity\VendorInvoice $vendor_invoice
+ * @property \App\Model\Entity\CompanyInvoice $company_invoice
  * @property \App\Model\Entity\TicketCharge $ticket_charge
  * @property \App\Model\Entity\Ticket $ticket
  * @property \App\Model\Entity\User $overridden_by_user
  */
-class VendorInvoiceLine extends Entity
+class CompanyInvoiceLine extends Entity
 {
     /**
      * Fields that can be mass assigned using newEntity() or patchEntity().
@@ -43,7 +43,7 @@ class VendorInvoiceLine extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_invoice_id' => true,
+        'company_invoice_id' => true,
         'ticket_charge_id' => true,
         'ticket_id' => true,
         'line_type' => true,
@@ -59,7 +59,7 @@ class VendorInvoiceLine extends Entity
         'sort_order' => true,
         'created' => true,
         'modified' => true,
-        'vendor_invoice' => true,
+        'company_invoice' => true,
         'ticket_charge' => true,
         'ticket' => true,
         'overridden_by_user' => true,

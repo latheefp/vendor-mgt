@@ -9,7 +9,7 @@ use Cake\ORM\Entity;
  * Symptom Entity
  *
  * @property int $id
- * @property int|null $vendor_id
+ * @property int|null $company_id
  * @property string|null $override_note
  * @property int|null $product_category_id
  * @property string $code
@@ -38,7 +38,7 @@ class Symptom extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'override_note' => true,
         'product_category_id' => true,
         'code' => true,

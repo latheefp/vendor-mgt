@@ -7,7 +7,9 @@ use App\Domain\Charge\BaseOverride;
 use App\Domain\Charge\ChargeBuilder;
 use App\Domain\Charge\ChargeLine;
 use App\Domain\Charge\ChargeSet;
+use App\Domain\Company\SettingCatalog;
 use App\Domain\Charge\SpareUsage;
+use App\Domain\Enum\ChargeLineType;
 use App\Domain\Enum\Payer;
 use App\Domain\Enum\WarrantyScope;
 use App\Domain\Exception\RateNotFoundException;
@@ -142,7 +144,7 @@ class TicketClosureService
         $resolution = $this->fetchTable('Resolutions')->find()
             ->where([
                 'id' => (int)$data['resolution_id'],
-                'OR' => ['vendor_id IS' => null, 'vendor_id' => $ticket->vendor_id],
+                'OR' => ['company_id IS' => null, 'company_id' => $ticket->company_id],
             ])
             ->first();
 
@@ -207,6 +209,16 @@ class TicketClosureService
                         $actorUserId,
                         sprintf('Closed as "%s". Not billable.', $resolution->name),
                         ['billable' => false],
+                    );
+
+                    $this->workflow->logEvent(
+                        $ticketId,
+                        'charges_frozen',
+                        null,
+                        null,
+                        $actorUserId,
+                        sprintf('Charges frozen — closed as "%s", not billable.', $resolution->name),
+                        ['reason' => 'closed_not_billable', 'resolution' => $resolution->name],
                     );
 
                     return ['ok' => true, 'totals' => [], 'lines' => []];
@@ -275,7 +287,7 @@ class TicketClosureService
     ): array {
         $ticket = $this->fetchTable('Tickets')->get($ticketId, contain: ['JobTypes', 'ProductCategories']);
 
-        $vendorId = (int)$ticket->vendor_id;
+        $companyId = (int)$ticket->company_id;
 
         // Priced under the terms in force when the job arrived, not
         // today's. A ticket received in March is a March job even if it
@@ -283,12 +295,12 @@ class TicketClosureService
         $onDate = (new DateTime($ticket->received_at))->format('Y-m-d');
 
         try {
-            $terms = $this->rates->agreementTerms($vendorId, $onDate);
+            $terms = $this->rates->agreementTerms($companyId, $onDate);
             // The card bound at intake wins, so a card published mid-job
             // cannot reprice work already quoted to the customer.
             $cardId = $ticket->rate_card_id !== null
                 ? (int)$ticket->rate_card_id
-                : $this->rates->activeCardId($vendorId, $onDate);
+                : $this->rates->activeCardId($companyId, $onDate);
         } catch (RecordNotFoundException $e) {
             return [
                 'ok' => false,
@@ -323,19 +335,43 @@ class TicketClosureService
                 $cardId,
             );
         } catch (RateNotFoundException $e) {
-            // The card has no line for this job. That is the case an
-            // override exists for — a 60" set on a card that stops at 55"
-            // and resumes at 65". Without one, nothing more can be said.
             if ($override === null) {
-                return [
-                    'ok' => false,
-                    'code' => 'rate_not_found',
-                    'errors' => ['rate' => [$e->getMessage()]],
-                    'context' => $e->context->toArray(),
-                    // The desk's way out, so the 409 is actionable rather
-                    // than a dead end.
-                    'override_accepted' => true,
-                ];
+                $config = new CompanyConfigRepository();
+                $defaultServiceCharge = $config->settings($companyId)->int(SettingCatalog::CLOSURE_DEFAULT_SERVICE_CHARGE, 400);
+
+                // A BOQ line already priced this job by hand. The fallback
+                // exists to stop an unpriceable ticket closing at zero, and
+                // that is no longer the situation — adding it now would bill
+                // a service charge twice, once as the BOQ line the desk
+                // agreed and once as the default of the same name.
+                //
+                // The base still has to exist: ChargeBuilder refuses a job
+                // with neither a card item nor an override, and a zero line
+                // records *why* the total came from the BOQ instead of
+                // leaving a ticket that looks unpriced.
+                if ($this->hasBoqLine($ticketId)) {
+                    $override = new BaseOverride(
+                        amount: Money::zero(),
+                        payer: Payer::Company,
+                        reason: 'Priced by BOQ lines; no rate card item applies.',
+                        authorisedByUserId: $actorUserId,
+                    );
+                } elseif ($defaultServiceCharge > 0) {
+                    $override = new BaseOverride(
+                        amount: Money::fromRupees($defaultServiceCharge),
+                        payer: Payer::Company,
+                        reason: sprintf('Basic Service Charge (₹%d)', $defaultServiceCharge),
+                        authorisedByUserId: $actorUserId,
+                    );
+                } else {
+                    return [
+                        'ok' => false,
+                        'code' => 'rate_not_found',
+                        'errors' => ['rate' => [$e->getMessage()]],
+                        'context' => $e->context->toArray(),
+                        'override_accepted' => true,
+                    ];
+                }
             }
 
             // With no item to inherit from, the override has to say who pays
@@ -346,7 +382,7 @@ class TicketClosureService
                     'code' => 'validation_error',
                     'errors' => ['override_payer' => [
                         'This job has no rate card line, so state whether the '
-                        . 'vendor or the customer pays the manual amount.',
+                        . 'company or the customer pays the manual amount.',
                     ]],
                 ];
             }
@@ -499,7 +535,7 @@ class TicketClosureService
                 return [
                     'ok' => false,
                     'code' => 'validation_error',
-                    'errors' => ['override_payer' => ['Use either "vendor" or "customer".']],
+                    'errors' => ['override_payer' => ['Use either "company" or "customer".']],
                 ];
             }
         }
@@ -518,6 +554,16 @@ class TicketClosureService
     /**
      * Write the ledger and lock it.
      */
+    /**
+     * Whether the desk agreed any additional service on this job by hand.
+     */
+    private function hasBoqLine(int $ticketId): bool
+    {
+        return $this->fetchTable('TicketCharges')->find()
+            ->where(['ticket_id' => $ticketId, 'line_type' => ChargeLineType::Boq->value])
+            ->count() > 0;
+    }
+
     private function freeze(
         int $ticketId,
         int $rateCardId,
@@ -530,13 +576,23 @@ class TicketClosureService
 
         // Only ever reached for a ticket with no frozen charges, so this
         // clears a failed earlier attempt rather than a settled ledger.
-        $chargesTable->deleteAll(['ticket_id' => $ticketId, 'is_frozen' => false]);
+        //
+        // BOQ lines are exempt. They are not a stale computation to be
+        // redone — they are work the desk agreed with the customer while
+        // the job was open, which the rate card never knew about. Deleting
+        // them here would silently drop billable work between the desk
+        // agreeing it and the invoice being raised.
+        $chargesTable->deleteAll([
+            'ticket_id' => $ticketId,
+            'is_frozen' => false,
+            'line_type !=' => ChargeLineType::Boq->value,
+        ]);
 
         foreach ($charges->lines as $line) {
             $row = $line->toRow() + [
                 'ticket_id' => $ticketId,
                 'rate_card_id' => $rateCardId,
-                'vendor_agreement_id' => $agreementId,
+                'company_agreement_id' => $agreementId,
                 'computed_at' => $now,
                 'computed_by_user_id' => $actorUserId,
                 'is_frozen' => true,
@@ -546,14 +602,41 @@ class TicketClosureService
             $chargesTable->saveOrFail($chargesTable->newEntity($row));
         }
 
+        // The BOQ lines that survived above join the ledger on the same
+        // terms as the computed ones: locked, and stamped with the card and
+        // agreement the rest of the ticket was priced under, so an invoice
+        // query that filters on either does not miss them.
+        $chargesTable->updateAll(
+            [
+                'is_frozen' => true,
+                'rate_card_id' => $rateCardId,
+                'company_agreement_id' => $agreementId,
+            ],
+            [
+                'ticket_id' => $ticketId,
+                'line_type' => ChargeLineType::Boq->value,
+                'is_frozen' => false,
+            ],
+        );
+
         $this->fetchTable('Tickets')->updateAll(
             [
                 'charges_computed_at' => $now,
                 'charges_frozen_at' => $now,
                 'rate_card_id' => $rateCardId,
-                'vendor_agreement_id' => $agreementId,
+                'company_agreement_id' => $agreementId,
             ],
             ['id' => $ticketId],
+        );
+
+        $this->workflow->logEvent(
+            $ticketId,
+            'charges_frozen',
+            null,
+            null,
+            $actorUserId,
+            sprintf('Charges frozen on closure — %d line(s).', count($charges->lines)),
+            ['reason' => 'closed', 'rate_card_id' => $rateCardId, 'agreement_id' => $agreementId],
         );
     }
 

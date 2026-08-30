@@ -43,19 +43,21 @@ export function SparesPanel() {
   const [tab, setTab] = useState<Tab>('stock')
   const [centreId, setCentreId] = useState('')
   const [centres, setCentres] = useState<Array<{ id: number; name: string }>>([])
-  const [vendors, setVendors] = useState<Array<{ id: number; name: string }>>([])
+  const [companies, setCompanies] = useState<Array<{ id: number; name: string }>>([])
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // Modals
   const [addPartModalOpen, setAddPartModalOpen] = useState(false)
   const [receiveModalOpen, setReceiveModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
+  // Bumped after a receipt so the stock balances behind the modal reload.
+  const [stockVersion, setStockVersion] = useState(0)
   const [catalogueParts, setCatalogueParts] = useState<SparePartOption[]>([])
   const [technicians, setTechnicians] = useState<Array<{ id: number; name: string }>>([])
 
   // Form states
   const [newPartForm, setNewPartForm] = useState({
-    vendor_id: '',
+    company_id: '',
     part_no: '',
     name: '',
     cost_rupees: '',
@@ -63,12 +65,15 @@ export function SparesPanel() {
     reorder_level: '5',
   })
 
+  // `received_at` starts blank on purpose. Clause 10 counts from the day
+  // the company shipped, and defaulting the field to today quietly hands
+  // us days of exposure we were not owed.
   const [receiveForm, setReceiveForm] = useState({
     spare_part_id: '',
     service_center_id: '',
     quantity: '1',
     reference: '',
-    received_at: new Date().toISOString().split('T')[0],
+    received_at: '',
   })
 
   const [issueForm, setIssueForm] = useState({
@@ -82,7 +87,7 @@ export function SparesPanel() {
     Promise.all([api.ticketOptions(), api.listCompanies()])
       .then(([options, companyList]) => {
         setCentres(options.service_centers ?? [])
-        setVendors(companyList ?? [])
+        setCompanies(companyList ?? [])
         setTechnicians(options.technicians ?? [])
 
         if (options.service_centers?.length > 0) {
@@ -93,7 +98,7 @@ export function SparesPanel() {
           setIssueForm((prev) => ({ ...prev, technician_id: String(options.technicians[0].id) }))
         }
         if (companyList?.length > 0) {
-          setNewPartForm((prev) => ({ ...prev, vendor_id: String(companyList[0].id) }))
+          setNewPartForm((prev) => ({ ...prev, company_id: String(companyList[0].id) }))
         }
       })
       .catch(() => setMessage({ type: 'error', text: 'Failed to load options.' }))
@@ -135,7 +140,7 @@ export function SparesPanel() {
     setMessage(null)
     try {
       await api.createSparePart({
-        vendor_id: Number(newPartForm.vendor_id),
+        company_id: Number(newPartForm.company_id),
         part_no: newPartForm.part_no,
         name: newPartForm.name,
         cost_rupees: Number(newPartForm.cost_rupees),
@@ -144,7 +149,7 @@ export function SparesPanel() {
       })
       setMessage({ type: 'success', text: `Spare Part "${newPartForm.part_no}" added to catalogue!` })
       setAddPartModalOpen(false)
-      setNewPartForm({ vendor_id: vendors[0]?.id ? String(vendors[0].id) : '', part_no: '', name: '', cost_rupees: '', mrp_rupees: '', reorder_level: '5' })
+      setNewPartForm({ company_id: companies[0]?.id ? String(companies[0].id) : '', part_no: '', name: '', cost_rupees: '', mrp_rupees: '', reorder_level: '5' })
       await loadCatalogue()
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to add spare part' })
@@ -162,9 +167,17 @@ export function SparesPanel() {
         reference: receiveForm.reference || undefined,
         received_at: receiveForm.received_at || undefined,
       })
-      setMessage({ type: 'success', text: `Stock receipt recorded successfully!` })
+      setMessage({
+        type: 'success',
+        text: `${receiveForm.quantity} booked in${receiveForm.reference ? ` against ${receiveForm.reference}` : ''}.`,
+      })
       setReceiveModalOpen(false)
+      // The challan number and date belong to the challan just booked, not
+      // to the next one. Carrying them over would stamp the wrong reference
+      // on the following receipt.
+      setReceiveForm((prev) => ({ ...prev, quantity: '1', reference: '', received_at: '' }))
       setTab('stock')
+      setStockVersion((v) => v + 1)
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to record receipt' })
     }
@@ -194,7 +207,7 @@ export function SparesPanel() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Spare Stock & Inventory</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Track vendor stock receipts, catalogue parts, technician holdings, and Clause 9 & 10 ageing.
+            Track company stock receipts, catalogue parts, technician holdings, and Clause 9 & 10 ageing.
           </p>
         </div>
 
@@ -203,7 +216,7 @@ export function SparesPanel() {
             onClick={() => setReceiveModalOpen(true)}
             className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
           >
-            + Book Receipt (Receive)
+            📦 Book in a Challan (Receive Stock)
           </button>
           <button
             onClick={() => setIssueModalOpen(true)}
@@ -266,9 +279,11 @@ export function SparesPanel() {
 
       {tab === 'ageing' && <AgeingTab centreId={centre} />}
       {tab === 'defectives' && <DefectivesTab onMessage={setMessage} />}
-      {tab === 'stock' && <StockTab centreId={centre} centres={centres} onMessage={setMessage} />}
+      {tab === 'stock' && (
+        <StockTab centreId={centre} reloadKey={stockVersion} onReceive={() => setReceiveModalOpen(true)} />
+      )}
       {tab === 'holdings' && <HoldingsTab centreId={centre} />}
-      {tab === 'catalogue' && <CatalogueTab parts={catalogueParts} vendors={vendors} onReceive={(partId) => { setReceiveForm(f => ({ ...f, spare_part_id: String(partId) })); setReceiveModalOpen(true); }} />}
+      {tab === 'catalogue' && <CatalogueTab parts={catalogueParts} companies={companies} onReceive={(partId) => { setReceiveForm(f => ({ ...f, spare_part_id: String(partId) })); setReceiveModalOpen(true); }} />}
 
       {/* ADD NEW SPARE PART MODAL */}
       {addPartModalOpen && (
@@ -280,17 +295,17 @@ export function SparesPanel() {
             <form onSubmit={handleAddPartSubmit} className="space-y-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                  Vendor Company *
+                  Company *
                 </label>
                 <select
                   required
-                  value={newPartForm.vendor_id}
-                  onChange={(e) => setNewPartForm({ ...newPartForm, vendor_id: e.target.value })}
+                  value={newPartForm.company_id}
+                  onChange={(e) => setNewPartForm({ ...newPartForm, company_id: e.target.value })}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 >
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
                     </option>
                   ))}
                 </select>
@@ -394,7 +409,7 @@ export function SparesPanel() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
             <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">
-              Book Stock Receipt (Vendor Challan)
+              Book Stock Receipt (Company Challan)
             </h3>
             <form onSubmit={handleReceiveSubmit} className="space-y-4">
               <div>
@@ -428,9 +443,14 @@ export function SparesPanel() {
                   {catalogueParts.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.part_no} — {p.name}
+                      {p.company?.name ? ` · ${p.company.name}` : ''}
                     </option>
                   ))}
                 </select>
+                <span className="mt-1 block text-[10px] text-slate-500 dark:text-slate-400">
+                  A part belongs to one company, and stock booked against the wrong one can never be
+                  fitted on that company's tickets.
+                </span>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -600,18 +620,18 @@ export function SparesPanel() {
 
 function CatalogueTab({
   parts,
-  vendors,
+  companies,
   onReceive,
 }: {
   parts: SparePartOption[]
-  vendors: Array<{ id: number; name: string }>
+  companies: Array<{ id: number; name: string }>
   onReceive: (partId: number) => void
 }) {
   const [search, setSearch] = useState('')
-  const [selectedVendor, setSelectedVendor] = useState('')
+  const [selectedCompany, setSelectedCompany] = useState('')
 
   const filtered = parts.filter((p) => {
-    if (selectedVendor && String(p.vendor_id) !== selectedVendor) return false
+    if (selectedCompany && String(p.company_id) !== selectedCompany) return false
     if (search) {
       const q = search.toLowerCase()
       return p.part_no.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)
@@ -632,14 +652,14 @@ function CatalogueTab({
           />
 
           <select
-            value={selectedVendor}
-            onChange={(e) => setSelectedVendor(e.target.value)}
+            value={selectedCompany}
+            onChange={(e) => setSelectedCompany(e.target.value)}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           >
-            <option value="">All vendors</option>
-            {vendors.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
+            <option value="">All companies</option>
+            {companies.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.name}
               </option>
             ))}
           </select>
@@ -654,7 +674,7 @@ function CatalogueTab({
             <tr>
               <th className="px-4 py-3">Part Number</th>
               <th className="px-4 py-3">Description</th>
-              <th className="px-4 py-3">Vendor</th>
+              <th className="px-4 py-3">Company</th>
               <th className="px-4 py-3">Unit Cost</th>
               <th className="px-4 py-3">MRP</th>
               <th className="px-4 py-3 text-right">Actions</th>
@@ -677,7 +697,7 @@ function CatalogueTab({
                     {p.name}
                   </td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                    {p.vendor?.name || `Vendor #${p.vendor_id}`}
+                    {p.company?.name || `Company #${p.company_id}`}
                   </td>
                   <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
                     {rupees(p.cost_paise)}
@@ -945,17 +965,17 @@ function DefectivesTab({ onMessage }: { onMessage: (m: { type: 'success' | 'erro
 
 function StockTab({
   centreId,
-  centres,
-  onMessage,
+  reloadKey,
+  onReceive,
 }: {
   centreId?: number
-  centres: Array<{ id: number; name: string }>
-  onMessage: (m: { type: 'success' | 'error'; text: string }) => void
+  /** Bumped by the page after a receipt is booked, to reload balances. */
+  reloadKey: number
+  onReceive: () => void
 }) {
   const [rows, setRows] = useState<SpareStockRow[]>([])
   const [summary, setSummary] = useState<SpareStockSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [receiving, setReceiving] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -966,7 +986,7 @@ function StockTab({
         setSummary(meta)
       })
       .finally(() => setLoading(false))
-  }, [centreId])
+  }, [centreId, reloadKey])
 
   useEffect(load, [load])
 
@@ -989,10 +1009,10 @@ function StockTab({
 
       <div className="flex flex-wrap items-center gap-2">
         <button
-          onClick={() => setReceiving((open) => !open)}
+          onClick={onReceive}
           className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700"
         >
-          {receiving ? 'Close' : '📦 Book in a challan'}
+          📦 Book in a challan
         </button>
         {centreId === undefined && (
           <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -1001,26 +1021,13 @@ function StockTab({
         )}
       </div>
 
-      {receiving && (
-        <ReceiveForm
-          centreId={centreId}
-          centres={centres}
-          onDone={(text) => {
-            onMessage({ type: 'success', text })
-            setReceiving(false)
-            load()
-          }}
-          onError={(text) => onMessage({ type: 'error', text })}
-        />
-      )}
-
       {loading ? (
         <Empty>Loading…</Empty>
       ) : rows.length === 0 ? (
         <Empty>No stock movements recorded yet. Book a company challan in to start the ledger.</Empty>
       ) : (
         <Table
-          head={['Part', 'Centre', 'On shelf', 'With techs', 'On hand', 'Reorder', 'Value']}
+          head={['Part', 'Company', 'Centre', 'On shelf', 'With techs', 'On hand', 'Reorder', 'Value']}
           rows={rows.map((row) => ({
             key: `${row.spare_part_id}-${row.service_center_id}`,
             tone: row.is_negative ? 'bad' : row.below_reorder ? 'warn' : undefined,
@@ -1029,6 +1036,9 @@ function StockTab({
                 <span className="font-medium">{row.part_no}</span>
                 <span className="block text-[11px] text-slate-500 dark:text-slate-400">{row.part_name}</span>
               </span>,
+              // Two companies can both stock a "43-inch backlight strip".
+              // Without the company on the row the balance is ambiguous.
+              row.company_name ?? '—',
               row.service_center_name,
               <span className={row.below_reorder ? 'font-medium text-amber-600 dark:text-amber-400' : ''}>
                 {row.on_shelf}
@@ -1043,134 +1053,6 @@ function StockTab({
           }))}
         />
       )}
-    </div>
-  )
-}
-
-/**
- * Booking a challan in.
- *
- * The date field defaults to nothing rather than to today. Clause 10
- * counts from the day the company shipped, and quietly defaulting it
- * forward hands us days of exposure we were not owed.
- */
-function ReceiveForm({
-  centreId,
-  centres,
-  onDone,
-  onError,
-}: {
-  centreId?: number
-  centres: Array<{ id: number; name: string }>
-  onDone: (message: string) => void
-  onError: (message: string) => void
-}) {
-  const [parts, setParts] = useState<SparePartOption[]>([])
-  const [partId, setPartId] = useState('')
-  const [quantity, setQuantity] = useState('1')
-  const [reference, setReference] = useState('')
-  const [receivedAt, setReceivedAt] = useState('')
-  const [centre, setCentre] = useState(centreId === undefined ? '' : String(centreId))
-  const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    api.spareCatalogue().then(setParts).catch(() => onError('The parts catalogue could not be loaded.'))
-  }, [onError])
-
-  const submit = async () => {
-    setSubmitting(true)
-    try {
-      await api.receiveSpares({
-        spare_part_id: Number(partId),
-        service_center_id: Number(centre),
-        quantity: Number(quantity) || 1,
-        reference: reference || undefined,
-        received_at: receivedAt || undefined,
-      })
-      onDone(`${quantity} booked in${reference ? ` against ${reference}` : ''}.`)
-    } catch (error) {
-      onError(error instanceof ApiError ? error.message : 'The receipt could not be recorded.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-4 dark:border-brand-900 dark:bg-brand-950/20">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <label className="lg:col-span-2">
-          <Label>Part</Label>
-          <select
-            value={partId}
-            onChange={(e) => setPartId(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          >
-            <option value="">Choose a part…</option>
-            {parts.map((part) => (
-              <option key={part.id} value={part.id}>
-                {part.part_no} — {part.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <Label>Service centre</Label>
-          <select
-            value={centre}
-            onChange={(e) => setCentre(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          >
-            <option value="">Choose a centre…</option>
-            {centres.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <Label>Quantity</Label>
-          <input
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          />
-        </label>
-
-        <label>
-          <Label>Challan no.</Label>
-          <input
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          />
-        </label>
-
-        <label className="lg:col-span-2">
-          <Label>Challan date</Label>
-          <input
-            type="date"
-            value={receivedAt}
-            onChange={(e) => setReceivedAt(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          />
-          <span className="mt-1 block text-[10px] text-slate-500 dark:text-slate-400">
-            The date on the company's paperwork, not today. The clause 10 clock starts here.
-          </span>
-        </label>
-      </div>
-
-      <button
-        onClick={() => void submit()}
-        disabled={submitting || partId === '' || centre === ''}
-        className="mt-3 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
-      >
-        {submitting ? 'Recording…' : 'Book in'}
-      </button>
     </div>
   )
 }
@@ -1219,10 +1101,6 @@ function HoldingsTab({ centreId }: { centreId?: number }) {
 /* ------------------------------------------------------------------ */
 /* Presentation                                                        */
 /* ------------------------------------------------------------------ */
-
-function Label({ children }: { children: React.ReactNode }) {
-  return <span className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-slate-400">{children}</span>
-}
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (

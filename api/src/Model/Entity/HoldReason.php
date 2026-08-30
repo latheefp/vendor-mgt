@@ -9,13 +9,13 @@ use Cake\ORM\Entity;
  * HoldReason Entity
  *
  * @property int $id
- * @property int|null $vendor_id
+ * @property int|null $company_id
  * @property string|null $override_note
  * @property string $code
  * @property string $name
  * @property string|null $description
  * @property bool $pauses_sla
- * @property bool $requires_vendor_notice
+ * @property bool $requires_company_notice
  * @property int $sort_order
  * @property bool $is_active
  * @property \Cake\I18n\DateTime $created
@@ -35,13 +35,13 @@ class HoldReason extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'override_note' => true,
         'code' => true,
         'name' => true,
         'description' => true,
         'pauses_sla' => true,
-        'requires_vendor_notice' => true,
+        'requires_company_notice' => true,
         'sort_order' => true,
         'is_active' => true,
         'created' => true,

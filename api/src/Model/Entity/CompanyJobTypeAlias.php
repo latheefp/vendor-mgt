@@ -6,21 +6,21 @@ namespace App\Model\Entity;
 use Cake\ORM\Entity;
 
 /**
- * VendorJobTypeAlias Entity
+ * CompanyJobTypeAlias Entity
  *
  * @property int $id
- * @property int $vendor_id
+ * @property int $company_id
  * @property int $job_type_id
- * @property string $vendor_label
+ * @property string $company_label
  * @property string|null $warranty_scope
  * @property bool $is_active
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime $modified
  *
- * @property \App\Model\Entity\Vendor $vendor
+ * @property \App\Model\Entity\Company $company
  * @property \App\Model\Entity\JobType $job_type
  */
-class VendorJobTypeAlias extends Entity
+class CompanyJobTypeAlias extends Entity
 {
     /**
      * Fields that can be mass assigned using newEntity() or patchEntity().
@@ -32,14 +32,14 @@ class VendorJobTypeAlias extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'job_type_id' => true,
-        'vendor_label' => true,
+        'company_label' => true,
         'warranty_scope' => true,
         'is_active' => true,
         'created' => true,
         'modified' => true,
-        'vendor' => true,
+        'company' => true,
         'job_type' => true,
     ];
 }

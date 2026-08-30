@@ -6,7 +6,7 @@ namespace App\Domain\Enum;
 /**
  * The clocks an SLA rule can be written against.
  *
- * All three run from the moment the vendor handed us the job, not from
+ * All three run from the moment the company handed us the job, not from
  * when the row was created — an email import can lag an assignment by
  * hours and we do not get those hours back.
  */

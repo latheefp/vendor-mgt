@@ -6,10 +6,10 @@ namespace App\Model\Entity;
 use Cake\ORM\Entity;
 
 /**
- * VendorAgreement Entity
+ * CompanyAgreement Entity
  *
  * @property int $id
- * @property int $vendor_id
+ * @property int $company_id
  * @property string $agreement_no
  * @property string|null $title
  * @property string $status
@@ -35,13 +35,13 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime $modified
  *
- * @property \App\Model\Entity\Vendor $vendor
+ * @property \App\Model\Entity\Company $company
  * @property \App\Model\Entity\RateCard[] $rate_cards
  * @property \App\Model\Entity\TicketCharge[] $ticket_charges
  * @property \App\Model\Entity\Ticket[] $tickets
- * @property \App\Model\Entity\VendorInvoice[] $vendor_invoices
+ * @property \App\Model\Entity\CompanyInvoice[] $company_invoices
  */
-class VendorAgreement extends Entity
+class CompanyAgreement extends Entity
 {
     /**
      * Fields that can be mass assigned using newEntity() or patchEntity().
@@ -53,7 +53,7 @@ class VendorAgreement extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'agreement_no' => true,
         'title' => true,
         'status' => true,
@@ -78,10 +78,10 @@ class VendorAgreement extends Entity
         'notes' => true,
         'created' => true,
         'modified' => true,
-        'vendor' => true,
+        'company' => true,
         'rate_cards' => true,
         'ticket_charges' => true,
         'tickets' => true,
-        'vendor_invoices' => true,
+        'company_invoices' => true,
     ];
 }

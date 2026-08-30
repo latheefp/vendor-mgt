@@ -16,7 +16,7 @@ use Cake\ORM\Entity;
  * remove, so it is not mass assignable.
  *
  * @property int $id
- * @property int $vendor_id
+ * @property int $company_id
  * @property string $period
  * @property int $last_value
  * @property \Cake\I18n\DateTime $created
@@ -28,7 +28,7 @@ class TicketSequence extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'period' => true,
     ];
 }

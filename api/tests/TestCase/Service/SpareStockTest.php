@@ -27,7 +27,7 @@ class SpareStockTest extends TestCase
     use LocatorAwareTrait;
 
     private SpareService $spares;
-    private int $vendorId;
+    private int $companyId;
     private int $centreId;
     private int $otherCentreId;
     private int $technicianId;
@@ -245,6 +245,171 @@ class SpareStockTest extends TestCase
         $this->assertSame(2, $this->spares->balanceAtCentre($this->partId, $this->centreId));
     }
 
+    /**
+     * A part recorded on the wrong job goes back to the bag it came out
+     * of, not to the shelf. Crediting the shelf balances the centre and
+     * leaves the technician holding stock they are not carrying — the same
+     * silent drift the two-row model exists to prevent.
+     */
+    public function testRemovingAFittedPartCreditsTheLocationItLeft(): void
+    {
+        $this->receive(5);
+        $this->spares->issueToTechnician($this->partId, $this->centreId, $this->technicianId, 1);
+
+        $ticketId = $this->seedTicket();
+        $fitted = $this->spares->consumeOnTicket($ticketId, ['spare_part_id' => $this->partId, 'quantity' => 1]);
+
+        $result = $this->spares->removeFromTicket($fitted['ticket_spare_id']);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame(5, $this->spares->balanceAtCentreTotal($this->partId, $this->centreId));
+        $this->assertSame(
+            1,
+            $this->spares->balanceWithTechnician($this->partId, $this->technicianId),
+            'It went back into the bag it was issued into.',
+        );
+        $this->assertSame(4, $this->spares->balanceAtCentre($this->partId, $this->centreId));
+    }
+
+    public function testRemovingAPartTakenOffTheShelfCreditsTheShelf(): void
+    {
+        $this->receive(5);
+
+        $ticketId = $this->seedTicket();
+        $fitted = $this->spares->consumeOnTicket($ticketId, ['spare_part_id' => $this->partId, 'quantity' => 2]);
+
+        $this->spares->removeFromTicket($fitted['ticket_spare_id']);
+
+        $this->assertSame(5, $this->spares->balanceAtCentre($this->partId, $this->centreId));
+        $this->assertSame(0, $this->spares->balanceWithTechnician($this->partId, $this->technicianId));
+    }
+
+    /**
+     * The line goes, so a closure gate or an invoice reading the ticket
+     * sees the part as never fitted. The movements stay: what the shelf
+     * did is history, and history is not edited.
+     */
+    public function testRemovingAPartDropsTheLineButKeepsTheLedger(): void
+    {
+        $this->receive(2);
+
+        $ticketId = $this->seedTicket();
+        $fitted = $this->spares->consumeOnTicket($ticketId, ['spare_part_id' => $this->partId, 'quantity' => 1]);
+
+        $this->spares->removeFromTicket($fitted['ticket_spare_id']);
+
+        $this->assertSame(
+            0,
+            $this->fetchTable('TicketSpares')->find()->where(['ticket_id' => $ticketId])->count(),
+        );
+
+        $types = array_map(
+            fn ($m): string => $m->movement_type,
+            $this->spares->movements($this->partId, $this->centreId),
+        );
+        $this->assertContains('consumed', $types);
+        $this->assertContains('adjustment', $types);
+    }
+
+    /**
+     * Once the charges are frozen the line has been billed to somebody,
+     * and `ticket_charges.ticket_spare_id` cascades on delete — removing
+     * it here would take an invoiced charge with it.
+     */
+    public function testRemovingIsRefusedOnceChargesAreFrozen(): void
+    {
+        $this->receive(2);
+
+        $ticketId = $this->seedTicket();
+        $fitted = $this->spares->consumeOnTicket($ticketId, ['spare_part_id' => $this->partId, 'quantity' => 1]);
+
+        $tickets = $this->fetchTable('Tickets');
+        $ticket = $tickets->get($ticketId);
+        $ticket->set('charges_frozen_at', DateTime::now());
+        $tickets->saveOrFail($ticket, ['checkRules' => false]);
+
+        $result = $this->spares->removeFromTicket($fitted['ticket_spare_id']);
+
+        $this->assertFalse($result['ok']);
+        $this->assertArrayHasKey('ticket', $result['errors']);
+        $this->assertSame(
+            1,
+            $this->fetchTable('TicketSpares')->find()->where(['ticket_id' => $ticketId])->count(),
+        );
+        $this->assertSame(1, $this->spares->balanceAtCentre($this->partId, $this->centreId));
+    }
+
+    /**
+     * The defective is already in the company's hands under a docket they
+     * will credit against. Withdrawing the line it belongs to would leave
+     * that consignment referring to nothing.
+     */
+    public function testRemovingIsRefusedAfterTheDefectiveWentBack(): void
+    {
+        $this->receive(2);
+
+        $ticketId = $this->seedTicket();
+        $fitted = $this->spares->consumeOnTicket($ticketId, [
+            'spare_part_id' => $this->partId,
+            'quantity' => 1,
+            'is_defective_return' => true,
+        ]);
+
+        $this->spares->returnDefective($fitted['ticket_spare_id'], 'DKT-001');
+
+        $result = $this->spares->removeFromTicket($fitted['ticket_spare_id']);
+
+        $this->assertFalse($result['ok']);
+        $this->assertArrayHasKey('ticket_spare_id', $result['errors']);
+    }
+
+    /**
+     * Replacing a part is a removal followed by a fitting, and the stock
+     * has to read as one part gone rather than two.
+     */
+    public function testReplacingAPartLeavesOneConsumption(): void
+    {
+        $this->receive(5);
+
+        $ticketId = $this->seedTicket();
+        $wrong = $this->spares->consumeOnTicket($ticketId, ['spare_part_id' => $this->partId, 'quantity' => 1]);
+        $this->spares->removeFromTicket($wrong['ticket_spare_id']);
+        $this->spares->consumeOnTicket($ticketId, ['spare_part_id' => $this->partId, 'quantity' => 1]);
+
+        $this->assertSame(4, $this->spares->balanceAtCentre($this->partId, $this->centreId));
+        $this->assertSame(
+            1,
+            $this->fetchTable('TicketSpares')->find()->where(['ticket_id' => $ticketId])->count(),
+        );
+    }
+
+    /**
+     * The part came in on a challan three weeks ago and the fitting was a
+     * mis-entry. Putting it back must not hand it a fresh clause 10 window
+     * — a part that has sat here for 45 days is 45 days old whatever the
+     * paperwork did in between.
+     */
+    public function testRemovingDoesNotResetTheClause10Clock(): void
+    {
+        $arrived = DateTime::now()->subDays(45);
+        $this->receive(1, $arrived);
+
+        $ticketId = $this->seedTicket();
+        $fitted = $this->spares->consumeOnTicket($ticketId, [
+            'spare_part_id' => $this->partId,
+            'quantity' => 1,
+            'received_at' => $arrived->format('Y-m-d'),
+        ]);
+
+        $this->spares->removeFromTicket($fitted['ticket_spare_id']);
+
+        $result = $this->spares->stockAgeing($this->companyId, $this->centreId);
+
+        $this->assertCount(1, $result['lots']);
+        $this->assertSame(1, $result['lots'][0]['quantity']);
+        $this->assertTrue($result['lots'][0]['is_overdue'], 'The unit kept the age it arrived with.');
+    }
+
     // -----------------------------------------------------------------
     // clause 10 ageing
     // -----------------------------------------------------------------
@@ -258,7 +423,7 @@ class SpareStockTest extends TestCase
     {
         $this->receive(2, DateTime::now()->subDays(45));
 
-        $result = $this->spares->stockAgeing($this->vendorId, $this->centreId);
+        $result = $this->spares->stockAgeing($this->companyId, $this->centreId);
 
         $this->assertCount(1, $result['lots']);
         $this->assertTrue($result['lots'][0]['is_overdue']);
@@ -270,7 +435,7 @@ class SpareStockTest extends TestCase
     {
         $this->receive(2, DateTime::now()->subDays(3));
 
-        $result = $this->spares->stockAgeing($this->vendorId, $this->centreId);
+        $result = $this->spares->stockAgeing($this->companyId, $this->centreId);
 
         $this->assertFalse($result['lots'][0]['is_overdue']);
         $this->assertSame(0, $result['totals']['overdue_units']);
@@ -289,7 +454,7 @@ class SpareStockTest extends TestCase
         $ticketId = $this->seedTicket();
         $this->spares->consumeOnTicket($ticketId, ['spare_part_id' => $this->partId, 'quantity' => 2]);
 
-        $result = $this->spares->stockAgeing($this->vendorId, $this->centreId);
+        $result = $this->spares->stockAgeing($this->companyId, $this->centreId);
 
         $this->assertCount(1, $result['lots'], 'The old challan is fully used up.');
         $this->assertSame(2, $result['lots'][0]['quantity']);
@@ -307,7 +472,7 @@ class SpareStockTest extends TestCase
         $this->spares->issueToTechnician($this->partId, $this->centreId, $this->technicianId, 1);
         $this->spares->returnGoodFromTechnician($this->partId, $this->centreId, $this->technicianId, 1);
 
-        $result = $this->spares->stockAgeing($this->vendorId, $this->centreId);
+        $result = $this->spares->stockAgeing($this->companyId, $this->centreId);
 
         $this->assertCount(1, $result['lots']);
         $this->assertSame(2, $result['lots'][0]['quantity']);
@@ -324,7 +489,7 @@ class SpareStockTest extends TestCase
         $this->receive(1, DateTime::now()->subDays(40));
         $this->spares->issueToTechnician($this->partId, $this->centreId, $this->technicianId, 1);
 
-        $result = $this->spares->stockAgeing($this->vendorId, $this->centreId);
+        $result = $this->spares->stockAgeing($this->companyId, $this->centreId);
 
         $this->assertCount(1, $result['lots']);
         $this->assertTrue($result['lots'][0]['is_overdue']);
@@ -334,7 +499,7 @@ class SpareStockTest extends TestCase
     {
         $this->receive(2, DateTime::now()->subDays(40), unitCostPaise: 500000);
 
-        $result = $this->spares->stockAgeing($this->vendorId, $this->centreId);
+        $result = $this->spares->stockAgeing($this->companyId, $this->centreId);
 
         $this->assertSame(500000, $result['lots'][0]['unit_cost_paise']);
         $this->assertSame(1000000, $result['lots'][0]['value_paise']);
@@ -349,7 +514,7 @@ class SpareStockTest extends TestCase
         $this->receive(6);
         $this->spares->issueToTechnician($this->partId, $this->centreId, $this->technicianId, 4);
 
-        $rows = $this->spares->stockOnHand($this->vendorId, $this->centreId);
+        $rows = $this->spares->stockOnHand($this->companyId, $this->centreId);
         $row = $this->rowForPart($rows);
 
         $this->assertSame(6, $row['on_hand']);
@@ -386,6 +551,98 @@ class SpareStockTest extends TestCase
     // scaffolding
     // -----------------------------------------------------------------
 
+    // -----------------------------------------------------------------
+    // a part belongs to one company
+    // -----------------------------------------------------------------
+
+    /**
+     * A part may only be worked against its own company's jobs.
+     *
+     * `consumeOnTicket()` has always refused the crossover, but the bag
+     * movement runs first and used to be written whatever ticket it was
+     * handed. That left a technician holding company A's panel against
+     * company B's job — a state the fitting could never resolve and the
+     * holdings report read straight through.
+     */
+    public function testIssuingAnotherCompanysPartAgainstATicketIsRefused(): void
+    {
+        $this->receive(5);
+
+        $foreignPartId = $this->seedForeignPart();
+        $ticketId = $this->seedTicket();
+
+        $result = $this->spares->issueToTechnician(
+            $foreignPartId,
+            $this->centreId,
+            $this->technicianId,
+            1,
+            $ticketId,
+        );
+
+        $this->assertFalse($result['ok'], 'A part from another company should not go out on this ticket.');
+        $this->assertArrayHasKey('spare_part_id', $result['errors']);
+    }
+
+    /**
+     * Issuing without a ticket names no company, so there is nothing to
+     * contradict and the guard must stay out of the way.
+     */
+    public function testIssuingWithoutATicketIsUnaffected(): void
+    {
+        $this->receive(5);
+
+        $result = $this->spares->issueToTechnician($this->partId, $this->centreId, $this->technicianId, 1);
+
+        $this->assertTrue($result['ok']);
+    }
+
+    /**
+     * Clause 9 settles a consignment, and the credit note comes back
+     * against the docket. A box holding two companies' parts is one
+     * neither of them can credit in full.
+     */
+    public function testADefectiveBatchSpanningTwoCompaniesIsRefused(): void
+    {
+        $this->receive(2);
+
+        $ticketId = $this->seedTicket();
+        $ours = $this->spares->consumeOnTicket($ticketId, [
+            'spare_part_id' => $this->partId,
+            'quantity' => 1,
+            'is_defective_return' => true,
+        ]);
+
+        $theirs = $this->seedForeignDefective();
+
+        $result = $this->spares->returnDefectiveBatch(
+            [$ours['ticket_spare_id'], $theirs],
+            'DKT-MIXED',
+        );
+
+        $this->assertFalse($result['ok'], 'One docket cannot cover two companies.');
+        $this->assertArrayHasKey('ticket_spare_ids', $result['errors']);
+    }
+
+    /**
+     * The same batch, all from one company, still goes.
+     */
+    public function testADefectiveBatchWithinOneCompanyStillGoes(): void
+    {
+        $this->receive(2);
+
+        $ticketId = $this->seedTicket();
+        $fitted = $this->spares->consumeOnTicket($ticketId, [
+            'spare_part_id' => $this->partId,
+            'quantity' => 1,
+            'is_defective_return' => true,
+        ]);
+
+        $result = $this->spares->returnDefectiveBatch([$fitted['ticket_spare_id']], 'DKT-CLEAN');
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame([$fitted['ticket_spare_id']], $result['returned']);
+    }
+
     private function receive(int $quantity, ?DateTime $at = null, ?int $unitCostPaise = null): void
     {
         $result = $this->spares->receive(
@@ -421,13 +678,13 @@ class SpareStockTest extends TestCase
         $now = DateTime::now();
         $suffix = uniqid();
 
-        $vendors = $this->fetchTable('Vendors');
-        $vendor = $vendors->newEntity([
+        $companies = $this->fetchTable('Companies');
+        $company = $companies->newEntity([
             'code' => 'TSTV' . $suffix,
             'name' => 'Stock Test Company',
         ], ['validate' => false]);
-        $vendors->saveOrFail($vendor);
-        $this->vendorId = (int)$vendor->id;
+        $companies->saveOrFail($company);
+        $this->companyId = (int)$company->id;
 
         $centres = $this->fetchTable('ServiceCenters');
         foreach (['centreId' => 'A', 'otherCentreId' => 'B'] as $property => $letter) {
@@ -453,7 +710,7 @@ class SpareStockTest extends TestCase
 
         $parts = $this->fetchTable('SpareParts');
         $part = $parts->newEntity([
-            'vendor_id' => $this->vendorId,
+            'company_id' => $this->companyId,
             'part_no' => 'TST-PANEL-' . $suffix,
             'name' => 'Test panel',
             'cost_paise' => 650000,
@@ -465,6 +722,106 @@ class SpareStockTest extends TestCase
         ], ['validate' => false]);
         $parts->saveOrFail($part);
         $this->partId = (int)$part->id;
+    }
+
+    /**
+     * A second company with a part of its own, for the crossover tests.
+     *
+     * @return int The foreign part's id.
+     */
+    private function seedForeignPart(): int
+    {
+        $now = DateTime::now();
+        $suffix = uniqid();
+
+        $companies = $this->fetchTable('Companies');
+        $company = $companies->newEntity([
+            'code' => 'OTHV' . $suffix,
+            'name' => 'Other Test Company',
+        ], ['validate' => false]);
+        $companies->saveOrFail($company);
+
+        $parts = $this->fetchTable('SpareParts');
+        $part = $parts->newEntity([
+            'company_id' => (int)$company->id,
+            'part_no' => 'OTH-PANEL-' . $suffix,
+            'name' => 'Other company panel',
+            'cost_paise' => 650000,
+            'is_serialized' => false,
+            'reorder_level' => 3,
+            'is_active' => true,
+            'created' => $now,
+            'modified' => $now,
+        ], ['validate' => false]);
+        $parts->saveOrFail($part);
+
+        return (int)$part->id;
+    }
+
+    /**
+     * A defective awaiting return that belongs to a different company, so
+     * a batch can be built that spans two of them.
+     *
+     * Written straight to the table rather than through `consumeOnTicket()`
+     * because the point of the fixture is the crossover the service layer
+     * exists to prevent.
+     *
+     * @return int The ticket_spares id.
+     */
+    private function seedForeignDefective(): int
+    {
+        $now = DateTime::now();
+        $foreignPartId = $this->seedForeignPart();
+
+        $companyId = (int)$this->fetchTable('SpareParts')
+            ->get($foreignPartId)
+            ->company_id;
+
+        $customers = $this->fetchTable('Customers');
+        $customer = $customers->newEntity([
+            'name' => 'Other Test Customer',
+            'phone' => '9000000002',
+        ], ['validate' => false]);
+        $customers->saveOrFail($customer);
+
+        $jobTypes = $this->fetchTable('JobTypes');
+        $jobType = $jobTypes->newEntity([
+            'code' => 'oth_call_' . uniqid(),
+            'name' => 'Other stock test call',
+        ], ['validate' => false]);
+        $jobTypes->saveOrFail($jobType);
+
+        $tickets = $this->fetchTable('Tickets');
+        $ticket = $tickets->newEntity([
+            'customer_id' => (int)$customer->id,
+            'job_type_id' => (int)$jobType->id,
+            'company_id' => $companyId,
+            'service_center_id' => $this->centreId,
+            'assigned_technician_id' => $this->technicianId,
+            'ticket_no' => 'OTH-' . uniqid(),
+            'status' => 'in_progress',
+            'warranty_scope' => 'in_warranty',
+            'received_at' => $now,
+            'created' => $now,
+            'modified' => $now,
+        ], ['validate' => false]);
+        $tickets->saveOrFail($ticket, ['checkRules' => false]);
+
+        $ticketSpares = $this->fetchTable('TicketSpares');
+        $spare = $ticketSpares->newEntity([
+            'ticket_id' => (int)$ticket->id,
+            'spare_part_id' => $foreignPartId,
+            'quantity' => 1,
+            'charged_to' => 'company',
+            'unit_cost_paise' => 650000,
+            'is_defective_return' => true,
+            'issued_from_center_id' => $this->centreId,
+            'created' => $now,
+            'modified' => $now,
+        ], ['validate' => false]);
+        $ticketSpares->saveOrFail($spare);
+
+        return (int)$spare->id;
     }
 
     /**
@@ -495,7 +852,7 @@ class SpareStockTest extends TestCase
         $ticket = $tickets->newEntity([
             'customer_id' => (int)$customer->id,
             'job_type_id' => (int)$jobType->id,
-            'vendor_id' => $this->vendorId,
+            'company_id' => $this->companyId,
             'service_center_id' => $this->centreId,
             'assigned_technician_id' => $this->technicianId,
             'ticket_no' => 'TST-' . uniqid(),

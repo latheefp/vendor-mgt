@@ -14,7 +14,7 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\Date|null $effective_to
  * @property string $model
  * @property int|null $flat_amount_paise
- * @property string|null $pct_of_vendor
+ * @property string|null $pct_of_company
  * @property int|null $monthly_salary_paise
  * @property string $travel_free_km
  * @property int $travel_rate_per_km_paise
@@ -46,7 +46,7 @@ class TechnicianRate extends Entity
         'effective_to' => true,
         'model' => true,
         'flat_amount_paise' => true,
-        'pct_of_vendor' => true,
+        'pct_of_company' => true,
         'monthly_salary_paise' => true,
         'travel_free_km' => true,
         'travel_rate_per_km_paise' => true,

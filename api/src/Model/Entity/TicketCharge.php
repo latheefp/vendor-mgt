@@ -21,7 +21,7 @@ use Cake\ORM\Entity;
  * @property int|null $sla_rule_id
  * @property int|null $technician_rate_id
  * @property int|null $ticket_spare_id
- * @property int|null $vendor_agreement_id
+ * @property int|null $company_agreement_id
  * @property array|null $calc_snapshot
  * @property \Cake\I18n\DateTime $computed_at
  * @property int|null $computed_by_user_id
@@ -37,10 +37,10 @@ use Cake\ORM\Entity;
  * @property \App\Model\Entity\SlaRule $sla_rule
  * @property \App\Model\Entity\TechnicianRate $technician_rate
  * @property \App\Model\Entity\TicketSpare $ticket_spare
- * @property \App\Model\Entity\VendorAgreement $vendor_agreement
+ * @property \App\Model\Entity\CompanyAgreement $company_agreement
  * @property \App\Model\Entity\ComputedByUser $computed_by_user
  * @property \App\Model\Entity\TechnicianPayoutLine[] $technician_payout_lines
- * @property \App\Model\Entity\VendorInvoiceLine[] $vendor_invoice_lines
+ * @property \App\Model\Entity\CompanyInvoiceLine[] $company_invoice_lines
  */
 class TicketCharge extends Entity
 {
@@ -66,7 +66,7 @@ class TicketCharge extends Entity
         'sla_rule_id' => true,
         'technician_rate_id' => true,
         'ticket_spare_id' => true,
-        'vendor_agreement_id' => true,
+        'company_agreement_id' => true,
         'calc_snapshot' => true,
         'computed_at' => true,
         'computed_by_user_id' => true,
@@ -81,9 +81,9 @@ class TicketCharge extends Entity
         'sla_rule' => true,
         'technician_rate' => true,
         'ticket_spare' => true,
-        'vendor_agreement' => true,
+        'company_agreement' => true,
         'computed_by_user' => true,
         'technician_payout_lines' => true,
-        'vendor_invoice_lines' => true,
+        'company_invoice_lines' => true,
     ];
 }

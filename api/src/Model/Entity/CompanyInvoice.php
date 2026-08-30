@@ -6,11 +6,11 @@ namespace App\Model\Entity;
 use Cake\ORM\Entity;
 
 /**
- * VendorInvoice Entity
+ * CompanyInvoice Entity
  *
  * @property int $id
- * @property int $vendor_id
- * @property int|null $vendor_agreement_id
+ * @property int $company_id
+ * @property int|null $company_agreement_id
  * @property string $invoice_no
  * @property \Cake\I18n\Date $period_start
  * @property \Cake\I18n\Date $period_end
@@ -39,12 +39,12 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime $modified
  *
- * @property \App\Model\Entity\Vendor $vendor
- * @property \App\Model\Entity\VendorAgreement $vendor_agreement
+ * @property \App\Model\Entity\Company $company
+ * @property \App\Model\Entity\CompanyAgreement $company_agreement
  * @property \App\Model\Entity\User $created_by_user
- * @property \App\Model\Entity\VendorInvoiceLine[] $vendor_invoice_lines
+ * @property \App\Model\Entity\CompanyInvoiceLine[] $company_invoice_lines
  */
-class VendorInvoice extends Entity
+class CompanyInvoice extends Entity
 {
     /**
      * Fields that can be mass assigned using newEntity() or patchEntity().
@@ -56,8 +56,8 @@ class VendorInvoice extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
-        'vendor_agreement_id' => true,
+        'company_id' => true,
+        'company_agreement_id' => true,
         'invoice_no' => true,
         'period_start' => true,
         'period_end' => true,
@@ -85,9 +85,9 @@ class VendorInvoice extends Entity
         'notes' => true,
         'created' => true,
         'modified' => true,
-        'vendor' => true,
-        'vendor_agreement' => true,
+        'company' => true,
+        'company_agreement' => true,
         'created_by_user' => true,
-        'vendor_invoice_lines' => true,
+        'company_invoice_lines' => true,
     ];
 }

@@ -9,31 +9,31 @@ use Cake\ORM\Table;
 use Cake\Validation\Validator;
 
 /**
- * VendorAgreements Model
+ * CompanyAgreements Model
  *
- * @property \App\Model\Table\VendorsTable&\Cake\ORM\Association\BelongsTo $Vendors
+ * @property \App\Model\Table\CompaniesTable&\Cake\ORM\Association\BelongsTo $Companies
  * @property \App\Model\Table\RateCardsTable&\Cake\ORM\Association\HasMany $RateCards
  * @property \App\Model\Table\TicketChargesTable&\Cake\ORM\Association\HasMany $TicketCharges
  * @property \App\Model\Table\TicketsTable&\Cake\ORM\Association\HasMany $Tickets
- * @property \App\Model\Table\VendorInvoicesTable&\Cake\ORM\Association\HasMany $VendorInvoices
+ * @property \App\Model\Table\CompanyInvoicesTable&\Cake\ORM\Association\HasMany $CompanyInvoices
  *
- * @method \App\Model\Entity\VendorAgreement newEmptyEntity()
- * @method \App\Model\Entity\VendorAgreement newEntity(array $data, array $options = [])
- * @method array<\App\Model\Entity\VendorAgreement> newEntities(array $data, array $options = [])
- * @method \App\Model\Entity\VendorAgreement get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
- * @method \App\Model\Entity\VendorAgreement findOrCreate($search, ?callable $callback = null, array $options = [])
- * @method \App\Model\Entity\VendorAgreement patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
- * @method array<\App\Model\Entity\VendorAgreement> patchEntities(iterable $entities, array $data, array $options = [])
- * @method \App\Model\Entity\VendorAgreement|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
- * @method \App\Model\Entity\VendorAgreement saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
- * @method iterable<\App\Model\Entity\VendorAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorAgreement>|false saveMany(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\VendorAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorAgreement> saveManyOrFail(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\VendorAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorAgreement>|false deleteMany(iterable $entities, array $options = [])
- * @method iterable<\App\Model\Entity\VendorAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\VendorAgreement> deleteManyOrFail(iterable $entities, array $options = [])
+ * @method \App\Model\Entity\CompanyAgreement newEmptyEntity()
+ * @method \App\Model\Entity\CompanyAgreement newEntity(array $data, array $options = [])
+ * @method array<\App\Model\Entity\CompanyAgreement> newEntities(array $data, array $options = [])
+ * @method \App\Model\Entity\CompanyAgreement get(mixed $primaryKey, array|string $finder = 'all', \Psr\SimpleCache\CacheInterface|string|null $cache = null, \Closure|string|null $cacheKey = null, mixed ...$args)
+ * @method \App\Model\Entity\CompanyAgreement findOrCreate($search, ?callable $callback = null, array $options = [])
+ * @method \App\Model\Entity\CompanyAgreement patchEntity(\Cake\Datasource\EntityInterface $entity, array $data, array $options = [])
+ * @method array<\App\Model\Entity\CompanyAgreement> patchEntities(iterable $entities, array $data, array $options = [])
+ * @method \App\Model\Entity\CompanyAgreement|false save(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method \App\Model\Entity\CompanyAgreement saveOrFail(\Cake\Datasource\EntityInterface $entity, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyAgreement>|false saveMany(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyAgreement> saveManyOrFail(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyAgreement>|false deleteMany(iterable $entities, array $options = [])
+ * @method iterable<\App\Model\Entity\CompanyAgreement>|\Cake\Datasource\ResultSetInterface<\App\Model\Entity\CompanyAgreement> deleteManyOrFail(iterable $entities, array $options = [])
  *
  * @mixin \Cake\ORM\Behavior\TimestampBehavior
  */
-class VendorAgreementsTable extends Table
+class CompanyAgreementsTable extends Table
 {
     /**
      * Initialize method
@@ -45,27 +45,27 @@ class VendorAgreementsTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('vendor_agreements');
+        $this->setTable('company_agreements');
         $this->setDisplayField('title');
         $this->setPrimaryKey('id');
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             'joinType' => 'INNER',
         ]);
         $this->hasMany('RateCards', [
-            'foreignKey' => 'vendor_agreement_id',
+            'foreignKey' => 'company_agreement_id',
         ]);
         $this->hasMany('TicketCharges', [
-            'foreignKey' => 'vendor_agreement_id',
+            'foreignKey' => 'company_agreement_id',
         ]);
         $this->hasMany('Tickets', [
-            'foreignKey' => 'vendor_agreement_id',
+            'foreignKey' => 'company_agreement_id',
         ]);
-        $this->hasMany('VendorInvoices', [
-            'foreignKey' => 'vendor_agreement_id',
+        $this->hasMany('CompanyInvoices', [
+            'foreignKey' => 'company_agreement_id',
         ]);
     }
 
@@ -78,7 +78,7 @@ class VendorAgreementsTable extends Table
     public function validationDefault(Validator $validator): Validator
     {
         $validator
-            ->notEmptyString('vendor_id');
+            ->notEmptyString('company_id');
 
         $validator
             ->scalar('agreement_no')
@@ -184,8 +184,8 @@ class VendorAgreementsTable extends Table
      */
     public function buildRules(RulesChecker $rules): RulesChecker
     {
-        $rules->add($rules->isUnique(['vendor_id', 'agreement_no']), ['errorField' => 'vendor_id', 'message' => __('This combination of vendor_id and agreement_no already exists')]);
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
+        $rules->add($rules->isUnique(['company_id', 'agreement_no']), ['errorField' => 'company_id', 'message' => __('This combination of company_id and agreement_no already exists')]);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
 
         return $rules;
     }

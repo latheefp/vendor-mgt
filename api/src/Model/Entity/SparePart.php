@@ -9,7 +9,7 @@ use Cake\ORM\Entity;
  * SparePart Entity
  *
  * @property int $id
- * @property int $vendor_id
+ * @property int $company_id
  * @property int|null $product_category_id
  * @property string $part_no
  * @property string $name
@@ -22,7 +22,7 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime $modified
  *
- * @property \App\Model\Entity\Vendor $vendor
+ * @property \App\Model\Entity\Company $company
  * @property \App\Model\Entity\ProductCategory $product_category
  * @property \App\Model\Entity\TicketSpare[] $ticket_spares
  */
@@ -38,7 +38,7 @@ class SparePart extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'product_category_id' => true,
         'part_no' => true,
         'name' => true,
@@ -50,7 +50,7 @@ class SparePart extends Entity
         'is_active' => true,
         'created' => true,
         'modified' => true,
-        'vendor' => true,
+        'company' => true,
         'product_category' => true,
         'ticket_spares' => true,
     ];

@@ -3,13 +3,14 @@ import { api } from '../lib/api'
 import type {
   UserItem,
   RoleItem,
-  VendorItem,
+  CompanyItem,
   ProductCategoryItem,
   ProductItem,
   OptionItem,
+  TechnicianItem,
 } from '../lib/api'
 
-type SettingsTab = 'users' | 'roles' | 'vendors' | 'rate-cards' | 'products' | 'master-lists'
+type SettingsTab = 'users' | 'technicians' | 'roles' | 'companies' | 'rate-cards' | 'products' | 'master-lists'
 
 export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsTab }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab)
@@ -29,7 +30,7 @@ export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsT
             System Settings & Administration
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Manage users, groups & permissions, vendor companies, rate cards, appliances, and master lists.
+            Manage users, technicians, groups & permissions, companies, rate cards, appliances, and master lists.
           </p>
         </div>
       </div>
@@ -48,6 +49,17 @@ export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsT
         </button>
 
         <button
+          onClick={() => setActiveTab('technicians')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
+            activeTab === 'technicians'
+              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
+              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+          }`}
+        >
+          <span className="text-base">🛠️</span> Technicians
+        </button>
+
+        <button
           onClick={() => setActiveTab('roles')}
           className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
             activeTab === 'roles'
@@ -59,14 +71,14 @@ export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsT
         </button>
 
         <button
-          onClick={() => setActiveTab('vendors')}
+          onClick={() => setActiveTab('companies')}
           className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'vendors'
+            activeTab === 'companies'
               ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
               : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
           }`}
         >
-          <span className="text-base">🏢</span> Vendors
+          <span className="text-base">🏢</span> Companies
         </button>
 
         <button
@@ -105,8 +117,9 @@ export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsT
 
       {/* Tab Panels */}
       {activeTab === 'users' && <UsersTab />}
+      {activeTab === 'technicians' && <TechniciansTab />}
       {activeTab === 'roles' && <RolesTab />}
-      {activeTab === 'vendors' && <VendorsTab />}
+      {activeTab === 'companies' && <CompaniesTab />}
       {activeTab === 'rate-cards' && <RateCardsTab />}
       {activeTab === 'products' && <ProductsTab />}
       {activeTab === 'master-lists' && <MasterListsTab />}
@@ -499,6 +512,455 @@ function UsersTab() {
 }
 
 /* ==================================================================== */
+/* 1b. TECHNICIANS TAB                                                  */
+/* ==================================================================== */
+function TechniciansTab() {
+  const [technicians, setTechnicians] = useState<TechnicianItem[]>([])
+  const [serviceCenters, setServiceCenters] = useState<OptionItem[]>([])
+  const [jobTypes, setJobTypes] = useState<OptionItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [selectedCenter, setSelectedCenter] = useState('')
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingTechnician, setEditingTechnician] = useState<TechnicianItem | null>(null)
+  const [formData, setFormData] = useState({
+    code: '',
+    name: '',
+    phone: '',
+    alt_phone: '',
+    email: '',
+    service_center_id: '',
+    employment_type: 'contractor',
+    max_open_tickets: '10',
+    skills: [] as string[],
+    is_active: true,
+  })
+  const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const [tRes, optRes] = await Promise.all([
+        api.listTechnicians({ search, service_center_id: selectedCenter }),
+        api.ticketOptions(),
+      ])
+      setTechnicians(tRes)
+      setServiceCenters(optRes.service_centers)
+      setJobTypes(optRes.job_types)
+    } catch (e) {
+      console.error('Failed to load technicians', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadData()
+  }, [search, selectedCenter])
+
+  const openAddModal = () => {
+    setEditingTechnician(null)
+    setFormData({
+      code: '',
+      name: '',
+      phone: '',
+      alt_phone: '',
+      email: '',
+      service_center_id: serviceCenters[0]?.id ? String(serviceCenters[0].id) : '',
+      employment_type: 'contractor',
+      max_open_tickets: '10',
+      skills: [],
+      is_active: true,
+    })
+    setErrorMsg('')
+    setModalOpen(true)
+  }
+
+  const openEditModal = (technician: TechnicianItem) => {
+    setEditingTechnician(technician)
+    setFormData({
+      code: technician.code,
+      name: technician.name,
+      phone: technician.phone,
+      alt_phone: technician.alt_phone || '',
+      email: technician.email || '',
+      service_center_id: String(technician.service_center_id),
+      employment_type: technician.employment_type,
+      max_open_tickets: String(technician.max_open_tickets),
+      skills: technician.skills || [],
+      is_active: technician.is_active,
+    })
+    setErrorMsg('')
+    setModalOpen(true)
+  }
+
+  const toggleSkill = (code: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      skills: prev.skills.includes(code)
+        ? prev.skills.filter((s) => s !== code)
+        : [...prev.skills, code],
+    }))
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setErrorMsg('')
+
+    try {
+      const payload: Record<string, unknown> = {
+        code: formData.code,
+        name: formData.name,
+        phone: formData.phone,
+        alt_phone: formData.alt_phone || null,
+        email: formData.email || null,
+        service_center_id: parseInt(formData.service_center_id),
+        employment_type: formData.employment_type,
+        max_open_tickets: parseInt(formData.max_open_tickets) || 0,
+        skills: formData.skills,
+        is_active: formData.is_active,
+      }
+
+      if (editingTechnician) {
+        await api.updateTechnician(editingTechnician.id, payload)
+      } else {
+        await api.createTechnician(payload)
+      }
+
+      setModalOpen(false)
+      await loadData()
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save technician')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleStatus = async (technician: TechnicianItem) => {
+    try {
+      await api.toggleTechnicianStatus(technician.id)
+      await loadData()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controls Bar */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search by name, code, phone…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+          />
+
+          <select
+            value={selectedCenter}
+            onChange={(e) => setSelectedCenter(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+          >
+            <option value="">All Service Centers</option>
+            {serviceCenters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          onClick={openAddModal}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
+        >
+          <span>+ Add Technician</span>
+        </button>
+      </div>
+
+      {/* Technicians Table */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
+            <tr>
+              <th className="px-4 py-3">Code</th>
+              <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Contact</th>
+              <th className="px-4 py-3">Service Center</th>
+              <th className="px-4 py-3">Employment</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                  Loading technicians…
+                </td>
+              </tr>
+            ) : technicians.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                  No technicians found.
+                </td>
+              </tr>
+            ) : (
+              technicians.map((t) => (
+                <tr key={t.id} className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">{t.code}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{t.name}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                    <div>{t.phone}</div>
+                    {t.email && <div className="text-xs text-slate-400">{t.email}</div>}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                    {t.service_center?.name || '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {t.employment_type}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        t.is_active
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                          : 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          t.is_active ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`}
+                      />
+                      {t.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEditModal(t)}
+                        className="rounded px-2 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => void handleToggleStatus(t)}
+                        className="rounded px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                      >
+                        {t.is_active ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Technician Modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
+              {editingTechnician ? 'Edit Technician' : 'Add New Technician'}
+            </h3>
+
+            {errorMsg && (
+              <div className="mb-4 rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleSave} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Technician Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Alternate Phone
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.alt_phone}
+                    onChange={(e) => setFormData({ ...formData, alt_phone: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Service Center
+                  </label>
+                  <select
+                    required
+                    value={formData.service_center_id}
+                    onChange={(e) => setFormData({ ...formData, service_center_id: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <option value="" disabled>
+                      Select…
+                    </option>
+                    {serviceCenters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Employment Type
+                  </label>
+                  <select
+                    value={formData.employment_type}
+                    onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <option value="contractor">Contractor</option>
+                    <option value="employee">Employee</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Max Open Tickets
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  required
+                  value={formData.max_open_tickets}
+                  onChange={(e) => setFormData({ ...formData, max_open_tickets: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              {jobTypes.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                    Skills (job types this technician can be assigned)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {jobTypes.map((jt) => (
+                      <button
+                        type="button"
+                        key={jt.code}
+                        onClick={() => toggleSkill(jt.code)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          formData.skills.includes(jt.code)
+                            ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300'
+                            : 'border-slate-300 text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400'
+                        }`}
+                      >
+                        {jt.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  id="technician-active"
+                  checked={formData.is_active}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                />
+                <label htmlFor="technician-active" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Technician is Active
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Save Technician'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ==================================================================== */
 /* 2. GROUPS & PERMISSIONS TAB                                         */
 /* ==================================================================== */
 function RolesTab() {
@@ -802,27 +1264,30 @@ function RolesTab() {
 }
 
 /* ==================================================================== */
-/* 3. VENDORS MANAGEMENT TAB                                            */
+/* 3. COMPANIES MANAGEMENT TAB                                            */
 /* ==================================================================== */
-function VendorsTab() {
-  const [vendors, setVendors] = useState<VendorItem[]>([])
+function CompaniesTab() {
+  const [companies, setCompanies] = useState<CompanyItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedVendor, setSelectedVendor] = useState<VendorItem | null>(null)
-  const [vendorDetails, setVendorDetails] = useState<Record<string, unknown> | null>(null)
+  const [selectedCompany, setSelectedCompany] = useState<CompanyItem | null>(null)
+  const [companyDetails, setCompanyDetails] = useState<Record<string, unknown> | null>(null)
+  const [districts, setDistricts] = useState<OptionItem[]>([])
+  const [serviceCenters, setServiceCenters] = useState<OptionItem[]>([])
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingCompany, setEditingCompany] = useState<CompanyItem | null>(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [legalName, setLegalName] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const loadVendors = async () => {
+  const loadCompanies = async () => {
     setLoading(true)
     try {
-      const vRes = await api.listCompanies()
-      setVendors(vRes)
-      if (vRes.length > 0 && !selectedVendor) {
-        setSelectedVendor(vRes[0])
+      const companyRes = await api.listCompanies()
+      setCompanies(companyRes)
+      if (companyRes.length > 0 && !selectedCompany) {
+        setSelectedCompany(companyRes[0])
       }
     } catch (e) {
       console.error(e)
@@ -832,78 +1297,122 @@ function VendorsTab() {
   }
 
   useEffect(() => {
-    void loadVendors()
+    void loadCompanies()
+    void api
+      .ticketOptions()
+      .then((opts) => {
+        setDistricts(opts.districts)
+        setServiceCenters(opts.service_centers)
+      })
+      .catch((e) => console.error(e))
   }, [])
 
   useEffect(() => {
-    if (!selectedVendor) return
+    if (!selectedCompany) return
     const fetchDetails = async () => {
       try {
-        const details = await api.getCompany(selectedVendor.id)
-        setVendorDetails(details)
+        const details = await api.getCompany(selectedCompany.id)
+        setCompanyDetails(details)
       } catch (e) {
         console.error(e)
       }
     }
     void fetchDetails()
-  }, [selectedVendor])
+  }, [selectedCompany])
 
-  const handleAddVendor = async (e: React.FormEvent) => {
+  const openAddModal = () => {
+    setEditingCompany(null)
+    setCode('')
+    setName('')
+    setLegalName('')
+    setModalOpen(true)
+  }
+
+  const openEditModal = (company: CompanyItem) => {
+    setEditingCompany(company)
+    setCode(company.code)
+    setName(company.name)
+    setLegalName(company.legal_name || '')
+    setModalOpen(true)
+  }
+
+  const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
     try {
-      await api.createCompany({ code, name, legal_name: legalName || null, is_active: true })
+      if (editingCompany) {
+        await api.updateCompany(editingCompany.id, { code, name, legal_name: legalName || null })
+      } else {
+        await api.createCompany({ code, name, legal_name: legalName || null, is_active: true })
+      }
       setModalOpen(false)
       setCode('')
       setName('')
       setLegalName('')
-      await loadVendors()
+      setEditingCompany(null)
+      await loadCompanies()
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to create vendor')
+      alert(err instanceof Error ? err.message : 'Failed to save company')
     } finally {
       setSaving(false)
     }
   }
 
+  const handleDeleteCompany = async (company: CompanyItem) => {
+    if (!confirm(`Are you sure you want to delete / deactivate company "${company.name}"?`)) return
+    try {
+      const result = await api.deleteCompany(company.id)
+      if (result.message) {
+        alert(result.message)
+      }
+      if (selectedCompany?.id === company.id) {
+        setSelectedCompany(null)
+      }
+      await loadCompanies()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Could not delete company')
+    }
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-3">
-      {/* Vendor Selector Column */}
+      {/* Company Selector Column */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Vendor Companies</h2>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Companies</h2>
           <button
-            onClick={() => setModalOpen(true)}
+            onClick={openAddModal}
             className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700"
           >
-            + New Vendor
+            + New Company
           </button>
         </div>
 
         <div className="space-y-2">
           {loading ? (
-            <div className="py-4 text-center text-xs text-slate-500">Loading vendors…</div>
+            <div className="py-4 text-center text-xs text-slate-500">Loading companies…</div>
           ) : (
-            vendors.map((v) => (
+            companies.map((company) => (
               <button
-                key={v.id}
-                onClick={() => setSelectedVendor(v)}
+                key={company.id}
+                onClick={() => setSelectedCompany(company)}
                 className={`w-full rounded-xl border p-4 text-left transition ${
-                  selectedVendor?.id === v.id
+                  selectedCompany?.id === company.id
                     ? 'border-brand-600 bg-brand-50/50 shadow-sm dark:border-brand-500 dark:bg-brand-950/30'
                     : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <div className="font-bold text-slate-900 dark:text-white">{v.name}</div>
+                  <div className="font-bold text-slate-900 dark:text-white">{company.name}</div>
                   <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {v.code}
+                    {company.code}
                   </span>
                 </div>
                 <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {v.legal_name || 'No legal name specified'}
+                  {company.legal_name || 'No legal name specified'}
                 </div>
                 <div className="mt-2 text-[11px] text-slate-400">
-                  Onboarded: {v.onboarded_on || 'N/A'}
+                  Onboarded: {company.onboarded_on || 'N/A'}
                 </div>
               </button>
             ))
@@ -911,69 +1420,234 @@ function VendorsTab() {
         </div>
       </div>
 
-      {/* Vendor Profile & Configuration View */}
+      {/* Company Profile & Configuration View */}
       <div className="lg:col-span-2">
-        {selectedVendor ? (
+        {selectedCompany ? (
           <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
               <div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedVendor.name}</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedCompany.name}</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Legal entity: {selectedVendor.legal_name || selectedVendor.name}
+                  Legal entity: {selectedCompany.legal_name || selectedCompany.name}
                 </p>
               </div>
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                Active Agreement
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openEditModal(selectedCompany)}
+                  className="rounded-lg border border-brand-500 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  onClick={() => void handleDeleteCompany(selectedCompany)}
+                  className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
+                >
+                  🗑️ Delete
+                </button>
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  Active Agreement
+                </span>
+              </div>
             </div>
 
-            {/* Terms Summary */}
-            {vendorDetails && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
-                  <div className="text-xs text-slate-500">Commercial Agreement Terms</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
-                    Status: {(vendorDetails.agreement as any)?.status || 'Active'}
+            {/* Terms & Active Rate Card Summary */}
+            {companyDetails && (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                    <div className="text-xs text-slate-500">Commercial Agreement Terms</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
+                      Status: {(companyDetails.agreement as any)?.status || 'Active'}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                      Royalty Rate: {(companyDetails.agreement as any)?.company_royalty_pct ?? '10'}%
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                      Travel Rate: Rs.{(companyDetails.agreement as any)?.travel_rate_per_km_rupees ?? '3'}/km
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                    Royalty Rate: {(vendorDetails.agreement as any)?.vendor_royalty_pct ?? '10'}%
-                  </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-400">
-                    Travel Rate: Rs.{(vendorDetails.agreement as any)?.travel_rate_per_km_rupees ?? '3'}/km
+
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                    <div className="text-xs text-slate-500">Active Rate Card</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
+                      {(companyDetails.active_rate_card as any)?.name || 'Default Rate Card'}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                      Version: v{(companyDetails.active_rate_card as any)?.version ?? '1'}
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                      Effective From: {(companyDetails.active_rate_card as any)?.effective_from || 'Immediate'}
+                    </div>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
-                  <div className="text-xs text-slate-500">Active Rate Card</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
-                    {(vendorDetails.active_rate_card as any)?.name || 'Default Rate Card'}
+                {/* Operational Dials & Evidence Rules */}
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-3">
+                    Operational Policy & Mandatory Evidence Rules
+                  </h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {[
+                      { key: 'closure.require_photo', label: '📷 Mandatory Photo at Closure', desc: 'Technician must attach job photo before closing ticket.' },
+                      { key: 'closure.require_customer_signature', label: '✍️ Mandatory Customer Signature', desc: 'Customer must sign on technician screen before closure.' },
+                      { key: 'closure.require_customer_otp', label: '🔑 Mandatory Customer OTP Code', desc: 'Customer must confirm job via SMS OTP code at closure.' },
+                      { key: 'ticket.require_serial_no', label: '🔢 Mandatory Unit Serial Number', desc: 'Intake form enforces unit serial number.' },
+                      { key: 'ticket.require_bill_date', label: '📅 Mandatory Purchase / Bill Date', desc: 'Intake form enforces purchase date.' },
+                      { key: 'assignment.enforce_technician_rules', label: '🛠️ Enforce Technician Assignment Rules', desc: 'Block assigning a technician outside their skills or over their open-job limit. Turn off to allow any technician to be assigned freely.' },
+                    ].map((setting) => {
+                      const settingsMap = (companyDetails.settings as Record<string, any>) || {}
+                      const currentVal = Boolean(settingsMap[setting.key]?.value ?? settingsMap[setting.key] ?? false)
+                      return (
+                        <label
+                          key={setting.key}
+                          className={`flex items-start justify-between gap-3 rounded-lg border p-3 cursor-pointer transition ${
+                            currentVal
+                              ? 'border-brand-500 bg-brand-50/50 dark:border-brand-500 dark:bg-brand-950/30'
+                              : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 dark:text-white">{setting.label}</div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{setting.desc}</div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={currentVal}
+                            onChange={async () => {
+                              try {
+                                await api.updateCompanySettings(selectedCompany.id, { [setting.key]: !currentVal })
+                                const updated = await api.getCompany(selectedCompany.id)
+                                setCompanyDetails(updated)
+                              } catch (err: unknown) {
+                                alert(err instanceof Error ? err.message : 'Could not update setting')
+                              }
+                            }}
+                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                          />
+                        </label>
+                      )
+                    })}
                   </div>
-                  <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                    Version: v{(vendorDetails.active_rate_card as any)?.version ?? '1'}
+
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      💰 Default Basic Service Charge (₹)
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Basic closure charge automatically billed for any case under this company (e.g. ₹400 for Dianora).
+                    </p>
+                    <div className="flex items-center gap-2 max-w-xs">
+                      <input
+                        type="number"
+                        defaultValue={Number(
+                          ((companyDetails.settings as Record<string, any>)?.[
+                            'closure.default_service_charge'
+                          ]?.value ??
+                            (companyDetails.settings as Record<string, any>)?.[
+                              'closure.default_service_charge'
+                            ] ??
+                            400),
+                        )}
+                        onBlur={async (e) => {
+                          const val = Number(e.target.value) || 0
+                          try {
+                            await api.updateCompanySettings(selectedCompany.id, {
+                              'closure.default_service_charge': val,
+                            })
+                            const updated = await api.getCompany(selectedCompany.id)
+                            setCompanyDetails(updated)
+                          } catch (err: unknown) {
+                            alert('Could not update default service charge')
+                          }
+                        }}
+                        className="w-32 rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">INR</span>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-400">
-                    Effective From: {(vendorDetails.active_rate_card as any)?.effective_from || 'Immediate'}
+
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      📍 Default Intake District & Service Center
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Pre-selected on a new ticket for this company until the desk changes it.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 max-w-xl">
+                      <select
+                        defaultValue={String(
+                          (companyDetails.settings as Record<string, any>)?.[
+                            'ticket.default_district_code'
+                          ]?.value ?? 'KKD',
+                        )}
+                        onChange={async (e) => {
+                          try {
+                            await api.updateCompanySettings(selectedCompany.id, {
+                              'ticket.default_district_code': e.target.value,
+                            })
+                            const updated = await api.getCompany(selectedCompany.id)
+                            setCompanyDetails(updated)
+                          } catch (err: unknown) {
+                            alert('Could not update default district')
+                          }
+                        }}
+                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      >
+                        {districts.map((d) => (
+                          <option key={d.code} value={d.code}>
+                            {d.name} ({d.code})
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        defaultValue={String(
+                          (companyDetails.settings as Record<string, any>)?.[
+                            'ticket.default_service_center_code'
+                          ]?.value ?? 'THA',
+                        )}
+                        onChange={async (e) => {
+                          try {
+                            await api.updateCompanySettings(selectedCompany.id, {
+                              'ticket.default_service_center_code': e.target.value,
+                            })
+                            const updated = await api.getCompany(selectedCompany.id)
+                            setCompanyDetails(updated)
+                          } catch (err: unknown) {
+                            alert('Could not update default service center')
+                          }
+                        }}
+                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      >
+                        {serviceCenters.map((sc) => (
+                          <option key={sc.code} value={sc.code}>
+                            {sc.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         ) : (
           <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-slate-300 text-slate-400 dark:border-slate-800">
-            Select a vendor to view details
+            Select a company to view details
           </div>
         )}
       </div>
 
-      {/* Add Vendor Modal */}
+      {/* Add / Edit Company Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Add Vendor Company</h3>
-            <form onSubmit={handleAddVendor} className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
+              {editingCompany ? `Edit Company (${editingCompany.code})` : 'Add Company'}
+            </h3>
+            <form onSubmit={handleSaveCompany} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Vendor Code
+                  Company Code
                 </label>
                 <input
                   type="text"
@@ -1025,7 +1699,7 @@ function VendorsTab() {
                   disabled={saving}
                   className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
                 >
-                  {saving ? 'Creating…' : 'Create Vendor'}
+                  {saving ? (editingCompany ? 'Updating…' : 'Creating…') : (editingCompany ? 'Update Company' : 'Create Company')}
                 </button>
               </div>
             </form>
@@ -1069,12 +1743,13 @@ function slaWindow(rule: any): string {
 }
 
 function RateCardsTab() {
-  const [vendors, setVendors] = useState<VendorItem[]>([])
-  const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null)
+  const [companies, setCompanies] = useState<CompanyItem[]>([])
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
   const [rateCards, setRateCards] = useState<any[]>([])
   const [detail, setDetail] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [jobTypes, setJobTypes] = useState<OptionItem[]>([])
+  const [productCategories, setProductCategories] = useState<any[]>([])
 
   // Modal States
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -1092,12 +1767,16 @@ function RateCardsTab() {
   // Rate Item Form
   const [itemForm, setItemForm] = useState({
     job_type_id: '',
+    // '' means the line prices every appliance, which is how the original
+    // Dianora TV bands were written. Naming a category makes the line more
+    // specific, and RateResolver prefers the more specific match.
+    product_category_id: '',
     warranty_scope: 'in_warranty',
     label: '',
     size_min_inch: '',
     size_max_inch: '',
     amount_rupees: '',
-    payer: 'vendor',
+    payer: 'company',
   })
 
   // SLA Rule Form
@@ -1108,7 +1787,7 @@ function RateCardsTab() {
     threshold_from_hours: '',
     threshold_to_hours: '48',
     amount_rupees: '',
-    payer: 'vendor',
+    payer: 'company',
     label: '',
   })
 
@@ -1116,38 +1795,49 @@ function RateCardsTab() {
   const items: any[] = detail?.items ?? []
   const slaRules: any[] = detail?.sla_rules ?? []
 
+  // Only a screen has inches. A washing machine priced into a 24"-43" band
+  // is a line no ticket can ever match — which is exactly how an
+  // out-of-warranty washing machine job ends up closed but unpriceable.
+  const selectedCategory = productCategories.find(
+    (c) => String(c.id) === itemForm.product_category_id,
+  )
+  const sizeBanded = !selectedCategory || Boolean(Number(selectedCategory.is_sized))
+
   useEffect(() => {
-    const fetchVendorsAndOptions = async () => {
+    const fetchCompaniesAndOptions = async () => {
       try {
         const [companyList, options] = await Promise.all([
           api.listCompanies(),
           api.ticketOptions(),
         ])
-        setVendors(companyList)
+        setCompanies(companyList)
         if (options?.job_types) {
           setJobTypes(options.job_types)
           if (options.job_types.length > 0) {
             setItemForm((prev) => ({ ...prev, job_type_id: String(options.job_types[0].id) }))
           }
         }
+        if (options?.product_categories) {
+          setProductCategories(options.product_categories)
+        }
         if (companyList.length > 0) {
-          setSelectedVendorId(companyList[0].id)
+          setSelectedCompanyId(companyList[0].id)
         }
       } catch (e) {
         console.error(e)
       }
     }
-    void fetchVendorsAndOptions()
+    void fetchCompaniesAndOptions()
   }, [])
 
-  const reloadRateCards = async (vendorId: number) => {
+  const reloadRateCards = async (companyId: number) => {
     setLoading(true)
     try {
-      const cards = await api.listRateCards(vendorId)
+      const cards = await api.listRateCards(companyId)
       setRateCards(cards)
       if (cards.length > 0) {
         const firstId = Number((cards[0] as { id: number }).id)
-        setDetail(await api.getRateCard(vendorId, firstId))
+        setDetail(await api.getRateCard(companyId, firstId))
       } else {
         setDetail(null)
       }
@@ -1159,14 +1849,14 @@ function RateCardsTab() {
   }
 
   useEffect(() => {
-    if (!selectedVendorId) return
-    void reloadRateCards(selectedVendorId)
-  }, [selectedVendorId])
+    if (!selectedCompanyId) return
+    void reloadRateCards(selectedCompanyId)
+  }, [selectedCompanyId])
 
   const handleSelectCard = async (cardId: number) => {
-    if (!selectedVendorId) return
+    if (!selectedCompanyId) return
     try {
-      setDetail(await api.getRateCard(selectedVendorId, cardId))
+      setDetail(await api.getRateCard(selectedCompanyId, cardId))
     } catch (e) {
       console.error(e)
     }
@@ -1174,7 +1864,7 @@ function RateCardsTab() {
 
   const handleCreateCardSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedVendorId) return
+    if (!selectedCompanyId) return
     setMessage(null)
 
     try {
@@ -1187,10 +1877,10 @@ function RateCardsTab() {
         payload.clone_from = activeCard.id
       }
 
-      const res = await api.createRateCard(selectedVendorId, payload)
+      const res = await api.createRateCard(selectedCompanyId, payload)
       setMessage({ type: 'success', text: 'New draft rate card version created successfully!' })
       setCreateModalOpen(false)
-      await reloadRateCards(selectedVendorId)
+      await reloadRateCards(selectedCompanyId)
       if (res?.rate_card_id) {
         await handleSelectCard(Number(res.rate_card_id))
       }
@@ -1201,24 +1891,30 @@ function RateCardsTab() {
 
   const handleAddItemSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedVendorId || !card) return
+    if (!selectedCompanyId || !card) return
     setMessage(null)
 
     try {
       const payload = {
         job_type_id: Number(itemForm.job_type_id),
+        product_category_id: itemForm.product_category_id
+          ? Number(itemForm.product_category_id)
+          : null,
         warranty_scope: itemForm.warranty_scope,
         label: itemForm.label || undefined,
-        size_min_inch: itemForm.size_min_inch ? Number(itemForm.size_min_inch) : null,
-        size_max_inch: itemForm.size_max_inch ? Number(itemForm.size_max_inch) : null,
+        // An appliance with no screen carries no band. Sending one anyway
+        // produces a line the resolver can never match, because a banded
+        // item refuses a ticket whose size is unknown.
+        size_min_inch: sizeBanded && itemForm.size_min_inch ? Number(itemForm.size_min_inch) : null,
+        size_max_inch: sizeBanded && itemForm.size_max_inch ? Number(itemForm.size_max_inch) : null,
         amount_paise: Math.round(Number(itemForm.amount_rupees) * 100),
         payer: itemForm.payer,
       }
 
-      await api.addRateCardItem(selectedVendorId, card.id, payload)
+      await api.addRateCardItem(selectedCompanyId, card.id, payload)
       setMessage({ type: 'success', text: 'Priced line added to rate card draft!' })
       setItemModalOpen(false)
-      setDetail(await api.getRateCard(selectedVendorId, card.id))
+      setDetail(await api.getRateCard(selectedCompanyId, card.id))
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to add rate card line' })
     }
@@ -1226,7 +1922,7 @@ function RateCardsTab() {
 
   const handleAddSlaSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedVendorId || !card) return
+    if (!selectedCompanyId || !card) return
     setMessage(null)
 
     try {
@@ -1241,48 +1937,48 @@ function RateCardsTab() {
         label: slaForm.label || `${slaForm.rule_kind === 'bonus' ? 'Bonus' : 'Penalty'} rule`,
       }
 
-      await api.addSlaRule(selectedVendorId, card.id, payload)
+      await api.addSlaRule(selectedCompanyId, card.id, payload)
       setMessage({ type: 'success', text: 'SLA rule added to draft card!' })
       setSlaModalOpen(false)
-      setDetail(await api.getRateCard(selectedVendorId, card.id))
+      setDetail(await api.getRateCard(selectedCompanyId, card.id))
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to add SLA rule' })
     }
   }
 
   const handlePublishCard = async () => {
-    if (!selectedVendorId || !card) return
+    if (!selectedCompanyId || !card) return
     if (!confirm(`Are you sure you want to publish "${card.name || 'Rate Card'}" (v${card.version})? Once published, this card becomes immutable.`)) return
     setMessage(null)
 
     try {
-      await api.publishRateCard(selectedVendorId, card.id)
+      await api.publishRateCard(selectedCompanyId, card.id)
       setMessage({ type: 'success', text: `Rate Card v${card.version} published and active!` })
-      await reloadRateCards(selectedVendorId)
+      await reloadRateCards(selectedCompanyId)
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to publish rate card' })
     }
   }
 
   const handleDeleteItem = async (itemId: number) => {
-    if (!selectedVendorId || !card) return
+    if (!selectedCompanyId || !card) return
     if (!confirm('Remove this priced line item from the draft rate card?')) return
     try {
-      await api.deleteRateCardItem(selectedVendorId, card.id, itemId)
+      await api.deleteRateCardItem(selectedCompanyId, card.id, itemId)
       setMessage({ type: 'success', text: 'Item removed from draft rate card' })
-      setDetail(await api.getRateCard(selectedVendorId, card.id))
+      setDetail(await api.getRateCard(selectedCompanyId, card.id))
     } catch (e: any) {
       setMessage({ type: 'error', text: e.message || 'Failed to remove rate item' })
     }
   }
 
   const handleDeleteSlaRule = async (ruleId: number) => {
-    if (!selectedVendorId || !card) return
+    if (!selectedCompanyId || !card) return
     if (!confirm('Remove this SLA rule from the draft rate card?')) return
     try {
-      await api.deleteSlaRule(selectedVendorId, card.id, ruleId)
+      await api.deleteSlaRule(selectedCompanyId, card.id, ruleId)
       setMessage({ type: 'success', text: 'SLA rule removed from draft rate card' })
-      setDetail(await api.getRateCard(selectedVendorId, card.id))
+      setDetail(await api.getRateCard(selectedCompanyId, card.id))
     } catch (e: any) {
       setMessage({ type: 'error', text: e.message || 'Failed to remove SLA rule' })
     }
@@ -1304,15 +2000,15 @@ function RateCardsTab() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Select Vendor:</label>
+          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Select Company:</label>
           <select
-            value={selectedVendorId || ''}
-            onChange={(e) => setSelectedVendorId(parseInt(e.target.value))}
+            value={selectedCompanyId || ''}
+            onChange={(e) => setSelectedCompanyId(parseInt(e.target.value))}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
           >
-            {vendors.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name} ({v.code})
+            {companies.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.name} ({company.code})
               </option>
             ))}
           </select>
@@ -1412,6 +2108,7 @@ function RateCardsTab() {
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <tr>
                     <th className="px-4 py-3">Job Type / Label</th>
+                    <th className="px-4 py-3">Appliance</th>
                     <th className="px-4 py-3">Warranty Scope</th>
                     <th className="px-4 py-3">Size Band</th>
                     <th className="px-4 py-3">Amount</th>
@@ -1422,7 +2119,7 @@ function RateCardsTab() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={card.status === 'draft' ? 6 : 5} className="px-4 py-6 text-center text-xs text-slate-500">
+                      <td colSpan={card.status === 'draft' ? 7 : 6} className="px-4 py-6 text-center text-xs text-slate-500">
                         No rate items in this draft. Click "+ Add Rate Item" above.
                       </td>
                     </tr>
@@ -1431,6 +2128,9 @@ function RateCardsTab() {
                       <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                         <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                           {item.label || item.job_type?.name || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                          {item.product_category?.name ?? 'All'}
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                           {SCOPE_LABELS[item.warranty_scope] ?? item.warranty_scope}
@@ -1544,7 +2244,7 @@ function RateCardsTab() {
       ) : (
         <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            No rate cards configured for this vendor yet.
+            No rate cards configured for this company yet.
           </p>
           <button
             onClick={() => setCreateModalOpen(true)}
@@ -1669,6 +2369,31 @@ function RateCardsTab() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Appliance
+                </label>
+                <select
+                  value={itemForm.product_category_id}
+                  onChange={(e) =>
+                    setItemForm({ ...itemForm, product_category_id: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="">All appliances</option>
+                  {productCategories.map((pc) => (
+                    <option key={pc.id} value={pc.id}>
+                      {pc.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  {itemForm.product_category_id
+                    ? 'This line prices only this appliance, and wins over an “all appliances” line.'
+                    : 'This line prices every appliance unless a more specific one exists.'}
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                   Label / Description
                 </label>
                 <input
@@ -1680,33 +2405,40 @@ function RateCardsTab() {
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                    Min Size (Inches)
-                  </label>
-                  <input
-                    type="number"
-                    value={itemForm.size_min_inch}
-                    onChange={(e) => setItemForm({ ...itemForm, size_min_inch: e.target.value })}
-                    placeholder="e.g. 45"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
+              {sizeBanded ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Min Size (Inches)
+                    </label>
+                    <input
+                      type="number"
+                      value={itemForm.size_min_inch}
+                      onChange={(e) => setItemForm({ ...itemForm, size_min_inch: e.target.value })}
+                      placeholder="e.g. 45"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                    Max Size (Inches)
-                  </label>
-                  <input
-                    type="number"
-                    value={itemForm.size_max_inch}
-                    onChange={(e) => setItemForm({ ...itemForm, size_max_inch: e.target.value })}
-                    placeholder="e.g. 55"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Max Size (Inches)
+                    </label>
+                    <input
+                      type="number"
+                      value={itemForm.size_max_inch}
+                      onChange={(e) => setItemForm({ ...itemForm, size_max_inch: e.target.value })}
+                      placeholder="e.g. 55"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+                  {selectedCategory?.name} has no screen size, so this line is priced
+                  flat with no size band.
+                </p>
+              )}
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
@@ -1733,7 +2465,7 @@ function RateCardsTab() {
                     onChange={(e) => setItemForm({ ...itemForm, payer: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
-                    <option value="vendor">Vendor</option>
+                    <option value="company">Company</option>
                     <option value="customer">Customer</option>
                     <option value="none">None</option>
                   </select>
@@ -1881,7 +2613,7 @@ function RateCardsTab() {
                     onChange={(e) => setSlaForm({ ...slaForm, payer: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
-                    <option value="vendor">Vendor</option>
+                    <option value="company">Company</option>
                     <option value="customer">Customer</option>
                     <option value="none">None</option>
                   </select>
@@ -1917,7 +2649,7 @@ function RateCardsTab() {
 function ProductsTab() {
   const [categories, setCategories] = useState<ProductCategoryItem[]>([])
   const [products, setProducts] = useState<ProductItem[]>([])
-  const [vendors, setVendors] = useState<VendorItem[]>([])
+  const [companies, setCompanies] = useState<CompanyItem[]>([])
   const [loading, setLoading] = useState(true)
 
   const [catModalOpen, setCatModalOpen] = useState(false)
@@ -1926,7 +2658,7 @@ function ProductsTab() {
   const [catIsSized, setCatIsSized] = useState(false)
 
   const [prodModalOpen, setProdModalOpen] = useState(false)
-  const [prodVendorId, setProdVendorId] = useState('')
+  const [prodCompanyId, setProdCompanyId] = useState('')
   const [prodCatId, setProdCatId] = useState('')
   const [modelNo, setModelNo] = useState('')
   const [modelName, setModelName] = useState('')
@@ -1937,14 +2669,14 @@ function ProductsTab() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [cRes, pRes, vRes] = await Promise.all([
+      const [cRes, pRes, companyRes] = await Promise.all([
         api.listProductCategories(),
         api.listProducts(),
         api.listCompanies(),
       ])
       setCategories(cRes)
       setProducts(pRes)
-      setVendors(vRes)
+      setCompanies(companyRes)
     } catch (e) {
       console.error(e)
     } finally {
@@ -1983,7 +2715,7 @@ function ProductsTab() {
     setSaving(true)
     try {
       await api.createProduct({
-        vendor_id: parseInt(prodVendorId),
+        company_id: parseInt(prodCompanyId),
         product_category_id: parseInt(prodCatId),
         model_no: modelNo,
         name: modelName || null,
@@ -2061,7 +2793,7 @@ function ProductsTab() {
           </div>
           <button
             onClick={() => {
-              setProdVendorId(vendors[0]?.id ? String(vendors[0].id) : '')
+              setProdCompanyId(companies[0]?.id ? String(companies[0].id) : '')
               setProdCatId(categories[0]?.id ? String(categories[0].id) : '')
               setModelNo('')
               setModelName('')
@@ -2080,7 +2812,7 @@ function ProductsTab() {
               <tr>
                 <th className="px-4 py-3">Model Number</th>
                 <th className="px-4 py-3">Model Description</th>
-                <th className="px-4 py-3">Vendor</th>
+                <th className="px-4 py-3">Company</th>
                 <th className="px-4 py-3">Appliance Category</th>
                 <th className="px-4 py-3">Screen Size</th>
                 <th className="px-4 py-3">Warranty</th>
@@ -2109,7 +2841,7 @@ function ProductsTab() {
                       {p.name || '—'}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                      {p.vendor?.name || 'Grand Vendor'}
+                      {p.company?.name || 'Grand Company'}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                       {p.product_category?.name || 'LED TV'}
@@ -2205,16 +2937,16 @@ function ProductsTab() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Vendor
+                    Company
                   </label>
                   <select
-                    value={prodVendorId}
-                    onChange={(e) => setProdVendorId(e.target.value)}
+                    value={prodCompanyId}
+                    onChange={(e) => setProdCompanyId(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
                   >
-                    {vendors.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.id}>
+                        {company.name}
                       </option>
                     ))}
                   </select>
@@ -2331,6 +3063,7 @@ function MasterListsTab() {
   const [modalOpen, setModalOpen] = useState(false)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
+  const [requiresVideoProof, setRequiresVideoProof] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const loadLists = async () => {
@@ -2356,11 +3089,13 @@ function MasterListsTab() {
       await api.addMasterListItem(selectedList, {
         code: code.toLowerCase().replace(/\s+/g, '_'),
         name: name,
+        requires_video_proof: selectedList === 'symptoms' ? requiresVideoProof : false,
         is_active: true,
       })
       setModalOpen(false)
       setCode('')
       setName('')
+      setRequiresVideoProof(false)
       await loadLists()
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to add item')
@@ -2402,7 +3137,12 @@ function MasterListsTab() {
           {selectedList.replace('_', ' ')} Master List
         </h3>
         <button
-          onClick={() => setModalOpen(true)}
+          onClick={() => {
+            setCode('')
+            setName('')
+            setRequiresVideoProof(false)
+            setModalOpen(true)
+          }}
           className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700"
         >
           + Add New Item
@@ -2416,19 +3156,20 @@ function MasterListsTab() {
               <th className="px-4 py-3">Code</th>
               <th className="px-4 py-3">Name / Label</th>
               <th className="px-4 py-3">Details / Category</th>
+              {selectedList === 'symptoms' && <th className="px-4 py-3">Video Proof Rule</th>}
               <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {loading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={selectedList === 'symptoms' ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
                   Loading master list items…
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={selectedList === 'symptoms' ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
                   No items in this master list.
                 </td>
               </tr>
@@ -2444,6 +3185,29 @@ function MasterListsTab() {
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                     {item.product_category?.name || item.description || item.city || '—'}
                   </td>
+                  {selectedList === 'symptoms' && (
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.updateMasterListItem('symptoms', item.id, {
+                              requires_video_proof: !item.requires_video_proof,
+                            })
+                            await loadLists()
+                          } catch (err: unknown) {
+                            alert(err instanceof Error ? err.message : 'Could not update video proof requirement')
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                          item.requires_video_proof
+                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
+                        }`}
+                      >
+                        {item.requires_video_proof ? '📹 Video Proof Mandatory' : '📷 Optional Video'}
+                      </button>
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
                       Active
@@ -2491,6 +3255,21 @@ function MasterListsTab() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
                 />
               </div>
+
+              {selectedList === 'symptoms' && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="sym-video"
+                    checked={requiresVideoProof}
+                    onChange={(e) => setRequiresVideoProof(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <label htmlFor="sym-video" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                    📹 Require Video Proof for this symptom
+                  </label>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-4">
                 <button

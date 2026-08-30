@@ -41,7 +41,7 @@ use Cake\ORM\Locator\LocatorAwareTrait;
  *   consumed        -n at whichever location the part actually left
  *   written_off     -n at a stated location
  *   adjustment      signed, at a stated location
- *   sent_to_vendor   0        (a defective was never our stock)
+ *   sent_to_company   0        (a defective was never our stock)
  *
  * The alternative — one row carrying both ends — is what produced a
  * centre balance that fell by two when one part was issued and then
@@ -78,7 +78,7 @@ class SpareService
      *
      * @var array<int, int>
      */
-    private array $billingDaysByVendor = [];
+    private array $billingDaysByCompany = [];
 
     /**
      * @param \App\Service\RateCardRepository $rates Per-company agreement terms — clauses 6, 9 and 10.
@@ -160,6 +160,33 @@ class SpareService
     ): array {
         if ($quantity < 1) {
             return ['ok' => false, 'errors' => ['quantity' => ['How many parts are going out?']]];
+        }
+
+        // A part belongs to one company and may only be worked against that
+        // company's jobs. `consumeOnTicket()` refuses the mismatch when the
+        // part is fitted, but by then the bag movement is already written
+        // against the wrong job and the holdings report reads through it.
+        // Refusing here keeps the ledger from ever recording the crossover.
+        if ($ticketId !== null) {
+            $ticket = $this->fetchTable('Tickets')->find()
+                ->select(['id', 'company_id'])
+                ->where(['id' => $ticketId])
+                ->first();
+
+            if ($ticket === null) {
+                return ['ok' => false, 'errors' => ['ticket_id' => ['No such ticket.']]];
+            }
+
+            $belongs = $this->fetchTable('SpareParts')->exists([
+                'id' => $sparePartId,
+                'company_id' => $ticket->company_id,
+            ]);
+
+            if (!$belongs) {
+                return ['ok' => false, 'errors' => ['spare_part_id' => [
+                    'Not a part in this company\'s catalogue, so it cannot go out on this ticket.',
+                ]]];
+            }
         }
 
         $available = $this->balanceAtCentre($sparePartId, $serviceCenterId);
@@ -380,7 +407,7 @@ class SpareService
      *
      * @return list<array<string, mixed>>
      */
-    public function stockOnHand(?int $vendorId = null, ?int $serviceCenterId = null): array
+    public function stockOnHand(?int $companyId = null, ?int $serviceCenterId = null): array
     {
         $movements = $this->fetchTable('SpareStockMovements');
 
@@ -405,11 +432,11 @@ class SpareService
         }
 
         $parts = $this->fetchTable('SpareParts')->find()
-            ->contain(['Vendors'])
+            ->contain(['Companies'])
             ->where(['SpareParts.is_active' => true]);
 
-        if ($vendorId !== null) {
-            $parts->where(['SpareParts.vendor_id' => $vendorId]);
+        if ($companyId !== null) {
+            $parts->where(['SpareParts.company_id' => $companyId]);
         }
 
         $centres = $this->centreNames($serviceCenterId);
@@ -434,8 +461,8 @@ class SpareService
                     'spare_part_id' => (int)$part->id,
                     'part_no' => $part->part_no,
                     'part_name' => $part->name,
-                    'vendor_id' => (int)$part->vendor_id,
-                    'vendor_name' => $part->vendor->name ?? null,
+                    'company_id' => (int)$part->company_id,
+                    'company_name' => $part->company->name ?? null,
                     'service_center_id' => (int)$centreId,
                     'service_center_name' => $centreName,
                     'on_hand' => $onHand,
@@ -646,7 +673,7 @@ class SpareService
 
         $sparePartId = (int)($data['spare_part_id'] ?? 0);
         $part = $this->fetchTable('SpareParts')->find()
-            ->where(['id' => $sparePartId, 'vendor_id' => $ticket->vendor_id])
+            ->where(['id' => $sparePartId, 'company_id' => $ticket->company_id])
             ->first();
 
         if ($part === null) {
@@ -661,7 +688,7 @@ class SpareService
         // are supplied by the company and carry an obligation instead of a
         // price. Defaulted from the ticket rather than trusted from input,
         // because getting it wrong bills a warranty customer.
-        $chargedTo = $ticket->warranty_scope === 'out_of_warranty' ? 'customer' : 'vendor';
+        $chargedTo = $ticket->warranty_scope === 'out_of_warranty' ? 'customer' : 'company';
 
         $marginPct = '0.00';
         $unitCost = Money::fromPaise((int)$part->cost_paise);
@@ -671,7 +698,7 @@ class SpareService
 
             try {
                 $terms = $this->rates->agreementTerms(
-                    (int)$ticket->vendor_id,
+                    (int)$ticket->company_id,
                     (new DateTime($ticket->received_at))->format('Y-m-d'),
                 );
             } catch (RecordNotFoundException) {
@@ -720,7 +747,7 @@ class SpareService
             'notes' => $data['notes'] ?? null,
         ]);
 
-        $this->applyClocks($spare, (int)$ticket->vendor_id, $receivedAt);
+        $this->applyClocks($spare, (int)$ticket->company_id, $receivedAt);
 
         if (!$spares->save($spare)) {
             return ['ok' => false, 'errors' => $spare->getErrors()];
@@ -787,10 +814,10 @@ class SpareService
     /**
      * Set the two clauses' deadlines from this company's own terms.
      */
-    private function applyClocks(object $spare, int $vendorId, ?DateTime $receivedAt): void
+    private function applyClocks(object $spare, int $companyId, ?DateTime $receivedAt): void
     {
         try {
-            $terms = $this->rates->agreementTerms($vendorId);
+            $terms = $this->rates->agreementTerms($companyId);
         } catch (RecordNotFoundException) {
             return;
         }
@@ -810,6 +837,132 @@ class SpareService
         if ($receivedAt !== null) {
             $spare->set('billing_due_at', $receivedAt->addDays($terms->spareBillingDays));
         }
+    }
+
+    /**
+     * Take a part back off a job that was recorded in error.
+     *
+     * This is a correction, not a return: the part never left, so the
+     * consumption that took it out of stock has to be put back at the same
+     * location it came from. Reversing to the shelf when it actually came
+     * out of a technician's bag balances the centre and leaves that
+     * technician holding stock they do not have — the exact failure the
+     * two-row movement model exists to prevent.
+     *
+     * Refused once the money has been decided. A frozen ledger has already
+     * billed this line to somebody, and `ticket_charges.ticket_spare_id`
+     * cascades on delete, so removing the line here would silently take an
+     * invoiced charge with it. After the freeze the answer is an
+     * adjustment, which leaves both numbers on the record.
+     *
+     * Replacing a part is this followed by recording the right one. Kept as
+     * two acts because they are two facts — one wrong entry withdrawn, one
+     * part fitted — and a single "swap" would have to invent a stock
+     * movement that never happened.
+     *
+     * @return array{ok: true, part_name: string, stock_remaining: int}
+     *        |array{ok: false, errors: array<string, list<string>>}
+     */
+    public function removeFromTicket(int $ticketSpareId, ?int $actorUserId = null): array
+    {
+        $spares = $this->fetchTable('TicketSpares');
+
+        try {
+            $spare = $spares->get($ticketSpareId, contain: ['Tickets', 'SpareParts']);
+        } catch (RecordNotFoundException) {
+            return ['ok' => false, 'errors' => ['ticket_spare_id' => ['That part line no longer exists.']]];
+        }
+
+        if ($spare->ticket->charges_frozen_at !== null) {
+            return ['ok' => false, 'errors' => ['ticket' => [
+                'This ticket is closed and its charges are frozen. Raise an adjustment instead.',
+            ]]];
+        }
+
+        $chargeCount = $this->fetchTable('TicketCharges')->find()
+            ->where(['ticket_spare_id' => $ticketSpareId])
+            ->count();
+
+        if ($chargeCount > 0) {
+            return ['ok' => false, 'errors' => ['ticket_spare_id' => [
+                'This part has already been priced onto the ledger. Raise an adjustment instead.',
+            ]]];
+        }
+
+        if ($spare->defective_returned_at !== null) {
+            return ['ok' => false, 'errors' => ['ticket_spare_id' => [
+                'The defective unit for this line has already gone back to the company.',
+            ]]];
+        }
+
+        $quantity = (int)$spare->quantity;
+        $sparePartId = (int)$spare->spare_part_id;
+        $centreId = (int)($spare->issued_from_center_id ?? $spare->ticket->service_center_id);
+
+        // Whose stock it actually came out of. The consumption chose between
+        // the bag and the shelf at the time and the line does not record
+        // which, so the movement it wrote is the only witness: it is stamped
+        // at the same instant the line was issued, which is what makes the
+        // first match at or after that instant this line's own.
+        $conditions = [
+            'ticket_id' => (int)$spare->ticket_id,
+            'spare_part_id' => $sparePartId,
+            'movement_type' => 'consumed',
+            'quantity' => -$quantity,
+        ];
+
+        if ($spare->issued_at !== null) {
+            $conditions['occurred_at >='] = $spare->issued_at;
+        }
+
+        $consumed = $this->fetchTable('SpareStockMovements')->find()
+            ->where($conditions)
+            ->orderBy(['occurred_at' => 'ASC', 'id' => 'ASC'])
+            ->first();
+
+        // Dated to when the part actually arrived, not to now. The reversal
+        // reopens a clause 10 lot, and an inflow stamped today would hand
+        // the unit a fresh 30 days it was never owed — a part that has sat
+        // here for three weeks is three weeks old whatever the paperwork
+        // did in between. `receive()` stamps the challan date for the same
+        // reason.
+        $occurredAt = $spare->received_at
+            ?? ($consumed !== null ? new DateTime($consumed->occurred_at) : DateTime::now());
+
+        $this->recordMovement([
+            'spare_part_id' => $sparePartId,
+            'service_center_id' => $consumed !== null ? (int)$consumed->service_center_id : $centreId,
+            'technician_id' => $consumed?->technician_id,
+            'ticket_id' => (int)$spare->ticket_id,
+            'movement_type' => 'adjustment',
+            'quantity' => $quantity,
+            'unit_cost_paise' => (int)$spare->unit_cost_paise,
+            'serial_no' => $spare->serial_no,
+            'reference' => sprintf('reversal of ticket spare #%d', $ticketSpareId),
+            'occurred_at' => $occurredAt,
+            'actor_user_id' => $actorUserId,
+        ]);
+
+        $partName = (string)$spare->spare_part->name;
+        $ticketId = (int)$spare->ticket_id;
+
+        $spares->deleteOrFail($spare);
+
+        $this->workflow->logEvent($ticketId, 'spare_removed', null, null, $actorUserId, sprintf(
+            '%s x%d removed from the job and put back into stock.',
+            $partName,
+            $quantity,
+        ), [
+            'ticket_spare_id' => $ticketSpareId,
+            'part_no' => (string)$spare->spare_part->part_no,
+            'quantity' => $quantity,
+        ]);
+
+        return [
+            'ok' => true,
+            'part_name' => $partName,
+            'stock_remaining' => $this->balanceAtCentreTotal($sparePartId, $centreId),
+        ];
     }
 
     // -----------------------------------------------------------------
@@ -849,7 +1002,7 @@ class SpareService
             'spare_part_id' => (int)$spare->spare_part_id,
             'service_center_id' => (int)($spare->issued_from_center_id ?? $spare->ticket->service_center_id),
             'ticket_id' => (int)$spare->ticket_id,
-            'movement_type' => 'sent_to_vendor',
+            'movement_type' => 'sent_to_company',
             // The defective unit was never our stock to begin with; this
             // movement records the obligation being discharged, so it does
             // not move a balance.
@@ -905,6 +1058,32 @@ class SpareService
         if (trim($reference) === '') {
             return ['ok' => false, 'errors' => ['reference' => [
                 'A courier docket or challan number is what the credit note will quote back.',
+            ]]];
+        }
+
+        // One docket goes back to one company, and the credit note comes
+        // back against the docket. A box holding two companies' parts is a
+        // consignment neither of them can credit in full, so the mismatch
+        // has to be refused before the box is packed rather than discovered
+        // when the reconciliation will not close.
+        $companies = $this->fetchTable('TicketSpares')->find()
+            ->select(['company_id' => 'Tickets.company_id'])
+            ->join(['Tickets' => [
+                'table' => 'tickets',
+                'type' => 'INNER',
+                'conditions' => 'Tickets.id = TicketSpares.ticket_id',
+            ]])
+            ->where(['TicketSpares.id IN' => $ticketSpareIds])
+            ->distinct(['Tickets.company_id'])
+            ->disableHydration()
+            ->all()
+            ->extract('company_id')
+            ->toList();
+
+        if (count($companies) > 1) {
+            return ['ok' => false, 'errors' => ['ticket_spare_ids' => [
+                'This selection spans more than one company. Send one docket per company, '
+                . 'because the credit note comes back against the docket.',
             ]]];
         }
 
@@ -1022,7 +1201,7 @@ class SpareService
      *
      * @return list<array<string, mixed>>
      */
-    public function defectiveReturnsDue(?int $vendorId = null, int $withinDays = 3): array
+    public function defectiveReturnsDue(?int $companyId = null, int $withinDays = 3): array
     {
         $conditions = [
             'TicketSpares.is_defective_return' => true,
@@ -1030,8 +1209,8 @@ class SpareService
             'TicketSpares.defective_return_due_at <=' => DateTime::now()->addDays($withinDays),
         ];
 
-        if ($vendorId !== null) {
-            $conditions['Tickets.vendor_id'] = $vendorId;
+        if ($companyId !== null) {
+            $conditions['Tickets.company_id'] = $companyId;
         }
 
         return $this->fetchTable('TicketSpares')->find()
@@ -1041,7 +1220,7 @@ class SpareService
                 'TicketSpares.serial_no',
                 'TicketSpares.defective_return_due_at',
                 'ticket_no' => 'Tickets.ticket_no',
-                'vendor_id' => 'Tickets.vendor_id',
+                'company_id' => 'Tickets.company_id',
                 'part_no' => 'SpareParts.part_no',
                 'part_name' => 'SpareParts.name',
             ])
@@ -1073,16 +1252,16 @@ class SpareService
      *
      * @return list<array<string, mixed>>
      */
-    public function sparesNearingBillingCutoff(?int $vendorId = null, int $withinDays = 5): array
+    public function sparesNearingBillingCutoff(?int $companyId = null, int $withinDays = 5): array
     {
         $conditions = [
             'TicketSpares.billing_due_at IS NOT' => null,
             'TicketSpares.billing_due_at <=' => DateTime::now()->addDays($withinDays),
-            'TicketSpares.charged_to' => 'vendor',
+            'TicketSpares.charged_to' => 'company',
         ];
 
-        if ($vendorId !== null) {
-            $conditions['Tickets.vendor_id'] = $vendorId;
+        if ($companyId !== null) {
+            $conditions['Tickets.company_id'] = $companyId;
         }
 
         return $this->fetchTable('TicketSpares')->find()
@@ -1093,7 +1272,7 @@ class SpareService
                 'TicketSpares.billing_due_at',
                 'TicketSpares.received_at',
                 'ticket_no' => 'Tickets.ticket_no',
-                'vendor_id' => 'Tickets.vendor_id',
+                'company_id' => 'Tickets.company_id',
                 'part_no' => 'SpareParts.part_no',
                 'part_name' => 'SpareParts.name',
             ])
@@ -1135,7 +1314,7 @@ class SpareService
      *
      * @return array{lots: list<array<string, mixed>>, totals: array<string, int>}
      */
-    public function stockAgeing(?int $vendorId = null, ?int $serviceCenterId = null, int $warnWithinDays = 5): array
+    public function stockAgeing(?int $companyId = null, ?int $serviceCenterId = null, int $warnWithinDays = 5): array
     {
         $query = $this->fetchTable('SpareStockMovements')->find()
             ->select([
@@ -1147,7 +1326,7 @@ class SpareService
                 'unit_cost_paise' => 'SpareStockMovements.unit_cost_paise',
                 'reference' => 'SpareStockMovements.reference',
                 'occurred_at' => 'SpareStockMovements.occurred_at',
-                'vendor_id' => 'SpareParts.vendor_id',
+                'company_id' => 'SpareParts.company_id',
                 'part_no' => 'SpareParts.part_no',
                 'part_name' => 'SpareParts.name',
                 'catalogue_cost_paise' => 'SpareParts.cost_paise',
@@ -1176,8 +1355,8 @@ class SpareService
             ->orderByAsc('SpareStockMovements.occurred_at')
             ->orderByAsc('SpareStockMovements.id');
 
-        if ($vendorId !== null) {
-            $query->where(['SpareParts.vendor_id' => $vendorId]);
+        if ($companyId !== null) {
+            $query->where(['SpareParts.company_id' => $companyId]);
         }
 
         if ($serviceCenterId !== null) {
@@ -1213,7 +1392,7 @@ class SpareService
 
                 $row = $lot['row'];
                 $receivedAt = new DateTime($row['occurred_at']);
-                $billingDays = $this->spareBillingDays((int)$row['vendor_id']);
+                $billingDays = $this->spareBillingDays((int)$row['company_id']);
                 $dueAt = $receivedAt->addDays($billingDays);
                 $ageDays = (int)$receivedAt->diffInDays($now);
                 $daysLeft = (int)$now->diffInDays($dueAt, false);
@@ -1238,7 +1417,7 @@ class SpareService
                     'spare_part_id' => (int)$row['spare_part_id'],
                     'part_no' => $row['part_no'],
                     'part_name' => $row['part_name'],
-                    'vendor_id' => (int)$row['vendor_id'],
+                    'company_id' => (int)$row['company_id'],
                     'service_center_id' => (int)$row['service_center_id'],
                     'service_center_name' => $row['service_center_name'],
                     'quantity' => $lot['remaining'],
@@ -1288,23 +1467,23 @@ class SpareService
     }
 
     /**
-     * @param int $vendorId The company whose agreement sets the window.
+     * @param int $companyId The company whose agreement sets the window.
      * @return int Days we may hold their stock before clause 10 bills it to us.
      */
-    private function spareBillingDays(int $vendorId): int
+    private function spareBillingDays(int $companyId): int
     {
-        if (!isset($this->billingDaysByVendor[$vendorId])) {
+        if (!isset($this->billingDaysByCompany[$companyId])) {
             try {
-                $this->billingDaysByVendor[$vendorId] = $this->rates->agreementTerms($vendorId)->spareBillingDays;
+                $this->billingDaysByCompany[$companyId] = $this->rates->agreementTerms($companyId)->spareBillingDays;
             } catch (RecordNotFoundException) {
                 // No agreement on file is not a reason to report no
                 // exposure. The platform default is the safer guess, and a
                 // company with no terms is a separate problem.
-                $this->billingDaysByVendor[$vendorId] = 30;
+                $this->billingDaysByCompany[$companyId] = 30;
             }
         }
 
-        return $this->billingDaysByVendor[$vendorId];
+        return $this->billingDaysByCompany[$companyId];
     }
 
     /**

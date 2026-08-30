@@ -99,7 +99,7 @@ class TechnicianPayoutLinesTable extends Table
         $validator
             ->allowEmptyString('original_amount_paise');
 
-        // See VendorInvoiceLinesTable: the reason is enforced by the service
+        // See CompanyInvoiceLinesTable: the reason is enforced by the service
         // that restates a line, not by every line a normal run writes.
         $validator
             ->scalar('override_reason')

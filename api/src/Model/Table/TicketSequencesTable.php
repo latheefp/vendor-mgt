@@ -27,14 +27,14 @@ class TicketSequencesTable extends Table
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', ['foreignKey' => 'vendor_id', 'joinType' => 'INNER']);
+        $this->belongsTo('Companies', ['foreignKey' => 'company_id', 'joinType' => 'INNER']);
     }
 
     public function validationDefault(Validator $validator): Validator
     {
         $validator
-            ->integer('vendor_id')
-            ->notEmptyString('vendor_id');
+            ->integer('company_id')
+            ->notEmptyString('company_id');
 
         $validator
             ->scalar('period')

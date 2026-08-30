@@ -135,7 +135,7 @@ class UserSeed extends BaseSeed
                 'model' => 'flat_per_job',
                 'flat_amount_paise' => 20_000,           // Rs.200 per job
                 'travel_free_km' => '0.00',
-                'travel_rate_per_km_paise' => 200,       // Rs.2/km, vs Rs.3 from the vendor
+                'travel_rate_per_km_paise' => 200,       // Rs.2/km, vs Rs.3 from the company
                 'bonus_share_pct' => '100.00',
                 'penalty_recovery_pct' => '50.00',
                 'is_active' => 1,

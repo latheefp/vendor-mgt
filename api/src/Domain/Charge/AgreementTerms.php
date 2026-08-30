@@ -7,7 +7,7 @@ use App\Domain\Money;
 use App\Domain\Sla\SlaWindows;
 
 /**
- * The commercial terms in force for one ticket, lifted out of the vendor
+ * The commercial terms in force for one ticket, lifted out of the company
  * agreement and frozen.
  *
  * Frozen is the operative word. A ticket worked in March is priced under
@@ -18,7 +18,7 @@ final readonly class AgreementTerms
 {
     public function __construct(
         public int $id,
-        /** Clause 8: vendor's cut of out-of-warranty service collected. */
+        /** Clause 8: company's cut of out-of-warranty service collected. */
         public string $oowRoyaltyPct = '10.00',
         /** Clause 6: permitted margin band on spares billed to the customer. */
         public string $spareMarginMinPct = '10.00',

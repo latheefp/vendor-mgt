@@ -104,7 +104,7 @@ final class BaseOverrideTest extends TestCase
 
         $this->assertSame(120000, $charges->customerCollection()->paise);
         // 10% of Rs.1200 back to the company.
-        $this->assertSame(12000, $charges->vendorPayable()->paise);
+        $this->assertSame(12000, $charges->companyPayable()->paise);
         $this->assertSame(108000, $charges->grossMargin()->paise);
     }
 
@@ -150,7 +150,7 @@ final class BaseOverrideTest extends TestCase
             $base->snapshot['override']['reason'],
         );
         // Royalty follows the charge actually made, not the card's Rs.1000.
-        $this->assertSame(7500, $charges->vendorPayable()->paise);
+        $this->assertSame(7500, $charges->companyPayable()->paise);
     }
 
     /**
@@ -170,7 +170,7 @@ final class BaseOverrideTest extends TestCase
             new BaseOverride(
                 amount: Money::fromRupees(1200),
                 reason: 'Agreed by email 2026-07-01',
-                payer: Payer::Vendor,
+                payer: Payer::Company,
             ),
         );
 
@@ -178,9 +178,9 @@ final class BaseOverrideTest extends TestCase
 
         $this->assertStringContainsString('agreed manually', $base->description);
         $this->assertStringContainsString('Agreed by email 2026-07-01', $base->description);
-        $this->assertSame(Ledger::VendorReceivable, $base->ledger);
-        // Billed to the vendor, so no out-of-warranty royalty arises.
-        $this->assertTrue($charges->vendorPayable()->isZero());
+        $this->assertSame(Ledger::CompanyReceivable, $base->ledger);
+        // Billed to the company, so no out-of-warranty royalty arises.
+        $this->assertTrue($charges->companyPayable()->isZero());
     }
 
     /**
@@ -209,12 +209,12 @@ final class BaseOverrideTest extends TestCase
             new BaseOverride(
                 amount: Money::fromRupees(600),
                 reason: '44" set, no band covers it',
-                payer: Payer::Vendor,
+                payer: Payer::Company,
             ),
         );
 
         // Rs.600 manual + Rs.75 for closing inside 48 hours.
-        $this->assertSame(67500, $charges->vendorReceivable()->paise);
+        $this->assertSame(67500, $charges->companyReceivable()->paise);
     }
 
     /**

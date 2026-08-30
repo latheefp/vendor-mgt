@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Controller\Api;
 
+use App\Domain\Enum\PayoutMethod;
 use App\Service\SettlementService;
 use App\Service\SpareService;
 use Cake\Event\EventInterface;
@@ -25,7 +26,7 @@ class SettlementController extends ApiController
 
         $this->Authentication->allowUnauthenticated([
             'invoices', 'invoice', 'previewInvoice', 'payouts', 'payout',
-            'creditExposure', 'defectiveReturns', 'spareAgeing',
+            'creditExposure', 'receivables', 'defectiveReturns', 'spareAgeing',
         ]);
     }
 
@@ -38,11 +39,11 @@ class SettlementController extends ApiController
      */
     public function invoices(): Response
     {
-        $query = $this->fetchTable('VendorInvoices')->find()
-            ->contain(['Vendors'])
+        $query = $this->fetchTable('CompanyInvoices')->find()
+            ->contain(['Companies'])
             ->orderByDesc('period_end');
 
-        foreach (['vendor_id' => 'vendor_id', 'status' => 'status'] as $param => $column) {
+        foreach (['company_id' => 'company_id', 'status' => 'status'] as $param => $column) {
             $value = $this->request->getQuery($param);
             if ($value !== null && $value !== '') {
                 $query->where([$column => $value]);
@@ -146,13 +147,13 @@ class SettlementController extends ApiController
     public function previewInvoice(): Response
     {
         [$start, $end] = $this->period();
-        $vendorId = (int)$this->request->getQuery('vendor_id');
+        $companyId = (int)$this->request->getQuery('company_id');
 
-        if ($vendorId <= 0) {
-            return $this->fail('validation_error', 'A vendor_id is required.', 422);
+        if ($companyId <= 0) {
+            return $this->fail('validation_error', 'A company_id is required.', 422);
         }
 
-        return $this->respond((new SettlementService())->previewInvoice($vendorId, $start, $end));
+        return $this->respond((new SettlementService())->previewInvoice($companyId, $start, $end));
     }
 
     /**
@@ -160,17 +161,17 @@ class SettlementController extends ApiController
      */
     public function generateInvoice(): Response
     {
-        $vendorId = (int)$this->request->getData('vendor_id');
-        if ($vendorId <= 0) {
-            return $this->fail('validation_error', 'A vendor_id is required.', 422, [
-                'vendor_id' => ['Select the company to invoice.'],
+        $companyId = (int)$this->request->getData('company_id');
+        if ($companyId <= 0) {
+            return $this->fail('validation_error', 'A company_id is required.', 422, [
+                'company_id' => ['Select the company to invoice.'],
             ]);
         }
 
         [$start, $end] = $this->period(fromBody: true);
 
         $result = (new SettlementService())->generateInvoice(
-            $vendorId,
+            $companyId,
             $start,
             $end,
             $this->currentUserId(),
@@ -181,7 +182,7 @@ class SettlementController extends ApiController
         }
 
         return $this->respond(
-            $this->fetchTable('VendorInvoices')->get($result['invoice_id'], contain: ['Vendors']),
+            $this->fetchTable('CompanyInvoices')->get($result['invoice_id'], contain: ['Companies']),
             ['totals' => $result['totals']],
             201,
         );
@@ -213,7 +214,7 @@ class SettlementController extends ApiController
             return $this->fail('invalid_state', 'The invoice could not be sent.', 409, $result['errors']);
         }
 
-        return $this->respond($this->fetchTable('VendorInvoices')->get((int)$id));
+        return $this->respond($this->fetchTable('CompanyInvoices')->get((int)$id));
     }
 
     /**
@@ -251,6 +252,23 @@ class SettlementController extends ApiController
         $id = $this->routeParam('id', $id);
 
         return $this->respond((new SettlementService())->creditExposure((int)$id));
+    }
+
+    /**
+     * GET /api/receivables
+     *
+     * What every company owes, split by how far along it is: closed work
+     * nobody has invoiced yet, invoices drafted, invoices served and
+     * unpaid, and what has been received. The first of those is the one
+     * an invoice list cannot show, and it is the one that goes missing.
+     */
+    public function receivables(): Response
+    {
+        $asOf = $this->request->getQuery('as_of');
+
+        return $this->respond((new SettlementService())->receivables(
+            is_string($asOf) && $asOf !== '' ? $asOf : null,
+        ));
     }
 
     // -----------------------------------------------------------------
@@ -407,9 +425,21 @@ class SettlementController extends ApiController
     {
         $id = $this->routeParam('id', $id);
 
+        // A technician is paid by US, out of our margin — the company
+        // never pays them directly — so how the money left our hands is
+        // the only record that a payout actually happened. Constrained to
+        // the three routes in use: an unrecognised string here produces a
+        // payout marked paid with no way to trace the transfer.
+        $method = (string)$this->request->getData('method', 'bank_transfer');
+        if (!in_array($method, PayoutMethod::values(), true)) {
+            return $this->fail('validation_error', 'Unrecognised payment method.', 422, [
+                'method' => [sprintf('Use one of: %s.', implode(', ', PayoutMethod::values()))],
+            ]);
+        }
+
         $result = (new SettlementService())->markPayoutPaid(
             (int)$id,
-            (string)$this->request->getData('method', 'bank_transfer'),
+            $method,
             $this->request->getData('reference'),
         );
 
@@ -432,10 +462,10 @@ class SettlementController extends ApiController
      */
     public function defectiveReturns(): Response
     {
-        $vendorId = (int)$this->request->getQuery('vendor_id', 0);
+        $companyId = (int)$this->request->getQuery('company_id', 0);
 
         return $this->respond((new SpareService())->defectiveReturnsDue(
-            $vendorId > 0 ? $vendorId : null,
+            $companyId > 0 ? $companyId : null,
             (int)$this->request->getQuery('within_days', 3),
         ));
     }
@@ -449,10 +479,10 @@ class SettlementController extends ApiController
      */
     public function spareAgeing(): Response
     {
-        $vendorId = (int)$this->request->getQuery('vendor_id', 0);
+        $companyId = (int)$this->request->getQuery('company_id', 0);
 
         return $this->respond((new SpareService())->sparesNearingBillingCutoff(
-            $vendorId > 0 ? $vendorId : null,
+            $companyId > 0 ? $companyId : null,
             (int)$this->request->getQuery('within_days', 5),
         ));
     }

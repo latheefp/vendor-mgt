@@ -10,9 +10,9 @@ use Cake\ORM\Entity;
  *
  * @property int $id
  * @property string $ticket_no
- * @property int $vendor_id
- * @property string|null $vendor_ticket_ref
- * @property int|null $vendor_agreement_id
+ * @property int $company_id
+ * @property string|null $company_ticket_ref
+ * @property int|null $company_agreement_id
  * @property int|null $rate_card_id
  * @property int $service_center_id
  * @property int $customer_id
@@ -57,10 +57,10 @@ use Cake\ORM\Entity;
  * @property int|null $parent_ticket_id
  * @property bool $is_repeat
  * @property int $reopened_count
- * @property \Cake\I18n\DateTime|null $vendor_submitted_at
- * @property \Cake\I18n\DateTime|null $vendor_approved_at
- * @property \Cake\I18n\DateTime|null $vendor_rejected_at
- * @property string|null $vendor_rejection_reason
+ * @property \Cake\I18n\DateTime|null $company_submitted_at
+ * @property \Cake\I18n\DateTime|null $company_approved_at
+ * @property \Cake\I18n\DateTime|null $company_rejected_at
+ * @property string|null $company_rejection_reason
  * @property \Cake\I18n\DateTime|null $charges_computed_at
  * @property \Cake\I18n\DateTime|null $charges_frozen_at
  * @property \Cake\I18n\DateTime|null $cancelled_at
@@ -72,14 +72,14 @@ use Cake\ORM\Entity;
  * @property int|null $brand_id
  * @property int|null $symptom_id
  * @property int|null $resolution_id
- * @property string|null $vendor_branch_label
- * @property string|null $vendor_complaint_type
+ * @property string|null $company_branch_label
+ * @property string|null $company_complaint_type
  * @property bool $video_proof_required
  * @property \Cake\I18n\DateTime|null $video_proof_received_at
- * @property array|null $vendor_payload
+ * @property array|null $company_payload
  *
- * @property \App\Model\Entity\Vendor $vendor
- * @property \App\Model\Entity\VendorAgreement $vendor_agreement
+ * @property \App\Model\Entity\Company $company
+ * @property \App\Model\Entity\CompanyAgreement $company_agreement
  * @property \App\Model\Entity\RateCard $rate_card
  * @property \App\Model\Entity\ServiceCenter $service_center
  * @property \App\Model\Entity\Customer $customer
@@ -100,7 +100,7 @@ use Cake\ORM\Entity;
  * @property \App\Model\Entity\TicketEvent[] $ticket_events
  * @property \App\Model\Entity\TicketHold[] $ticket_holds
  * @property \App\Model\Entity\TicketSpare[] $ticket_spares
- * @property \App\Model\Entity\VendorInvoiceLine[] $vendor_invoice_lines
+ * @property \App\Model\Entity\CompanyInvoiceLine[] $company_invoice_lines
  */
 class Ticket extends Entity
 {
@@ -115,9 +115,9 @@ class Ticket extends Entity
      */
     protected array $_accessible = [
         'ticket_no' => true,
-        'vendor_id' => true,
-        'vendor_ticket_ref' => true,
-        'vendor_agreement_id' => true,
+        'company_id' => true,
+        'company_ticket_ref' => true,
+        'company_agreement_id' => true,
         'rate_card_id' => true,
         'service_center_id' => true,
         'customer_id' => true,
@@ -162,10 +162,10 @@ class Ticket extends Entity
         'parent_ticket_id' => true,
         'is_repeat' => true,
         'reopened_count' => true,
-        'vendor_submitted_at' => true,
-        'vendor_approved_at' => true,
-        'vendor_rejected_at' => true,
-        'vendor_rejection_reason' => true,
+        'company_submitted_at' => true,
+        'company_approved_at' => true,
+        'company_rejected_at' => true,
+        'company_rejection_reason' => true,
         'charges_computed_at' => true,
         'charges_frozen_at' => true,
         'cancelled_at' => true,
@@ -177,13 +177,13 @@ class Ticket extends Entity
         'brand_id' => true,
         'symptom_id' => true,
         'resolution_id' => true,
-        'vendor_branch_label' => true,
-        'vendor_complaint_type' => true,
+        'company_branch_label' => true,
+        'company_complaint_type' => true,
         'video_proof_required' => true,
         'video_proof_received_at' => true,
-        'vendor_payload' => true,
-        'vendor' => true,
-        'vendor_agreement' => true,
+        'company_payload' => true,
+        'company' => true,
+        'company_agreement' => true,
         'rate_card' => true,
         'service_center' => true,
         'customer' => true,
@@ -204,6 +204,6 @@ class Ticket extends Entity
         'ticket_events' => true,
         'ticket_holds' => true,
         'ticket_spares' => true,
-        'vendor_invoice_lines' => true,
+        'company_invoice_lines' => true,
     ];
 }

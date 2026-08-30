@@ -103,7 +103,7 @@ final class ChargeBuilderTest extends TestCase
      *   Rs.350 installation 24"-43"
      * + Rs.50  closed within 24h
      * + Rs.0   travel (inside the 15km free radius)
-     * = Rs.400 receivable from the vendor
+     * = Rs.400 receivable from the company
      */
     public function testInstallationWithFastCloseBonus(): void
     {
@@ -115,9 +115,9 @@ final class ChargeBuilderTest extends TestCase
             travelKm: 8.0,
         );
 
-        $this->assertSame(40_000, $charges->vendorReceivable()->paise);
+        $this->assertSame(40_000, $charges->companyReceivable()->paise);
         $this->assertTrue($charges->customerCollection()->isZero());
-        $this->assertTrue($charges->vendorPayable()->isZero());
+        $this->assertTrue($charges->companyPayable()->isZero());
         $this->assertCount(2, $charges->lines, 'Base plus incentive, no travel line');
     }
 
@@ -137,12 +137,12 @@ final class ChargeBuilderTest extends TestCase
             closedAfterHours: 60,
         );
 
-        $this->assertSame(30_000, $charges->vendorReceivable()->paise);
+        $this->assertSame(30_000, $charges->companyReceivable()->paise);
 
         $penalties = $charges->ofType(ChargeLineType::SlaPenalty);
         $this->assertCount(1, $penalties);
         $this->assertSame(-5_000, $penalties[0]->amount->paise, 'Penalty must be negative');
-        $this->assertSame(Ledger::VendorReceivable, $penalties[0]->ledger);
+        $this->assertSame(Ledger::CompanyReceivable, $penalties[0]->ledger);
     }
 
     /**
@@ -168,8 +168,8 @@ final class ChargeBuilderTest extends TestCase
         $this->assertSame(8_100, $travel[0]->amount->paise, '27km @ Rs.3 = Rs.81');
         $this->assertSame('27.00', $travel[0]->quantity);
 
-        $this->assertSame(65_600, $charges->vendorReceivable()->paise);
-        $this->assertSame('₹656.00', $charges->vendorReceivable()->format());
+        $this->assertSame(65_600, $charges->companyReceivable()->paise);
+        $this->assertSame('₹656.00', $charges->companyReceivable()->format());
     }
 
     /**
@@ -199,7 +199,7 @@ final class ChargeBuilderTest extends TestCase
      * + Rs.240    12% margin on the spare (inside the 10-15% band)
      * = Rs.3740
      *
-     * Owed back to the vendor:
+     * Owed back to the company:
      *   Rs.150    10% royalty on the SERVICE charge only
      *
      * Note the royalty is Rs.150, not Rs.374. Clause 8 says "royalty on the
@@ -228,8 +228,8 @@ final class ChargeBuilderTest extends TestCase
         );
 
         $this->assertSame(374_000, $charges->customerCollection()->paise, 'Rs.3740 collected at the door');
-        $this->assertSame(15_000, $charges->vendorPayable()->paise, 'Rs.150 royalty on service only');
-        $this->assertTrue($charges->vendorReceivable()->isZero(), 'Nothing billed to the vendor');
+        $this->assertSame(15_000, $charges->companyPayable()->paise, 'Rs.150 royalty on service only');
+        $this->assertTrue($charges->companyReceivable()->isZero(), 'Nothing billed to the company');
 
         // Cost and margin are separate lines so the margin stays visible.
         $this->assertSame(200_000, $charges->ofType(ChargeLineType::SpareCost)[0]->amount->paise);
@@ -241,7 +241,7 @@ final class ChargeBuilderTest extends TestCase
 
     /**
      * The royalty basis is recorded in the snapshot, because the reading of
-     * clause 8 is an interpretation and the vendor may challenge it.
+     * clause 8 is an interpretation and the company may challenge it.
      */
     public function testRoyaltySnapshotRecordsItsBasis(): void
     {
@@ -252,7 +252,7 @@ final class ChargeBuilderTest extends TestCase
             closedAfterHours: 20,
         );
 
-        $royalty = $charges->ofType(ChargeLineType::VendorRoyalty)[0];
+        $royalty = $charges->ofType(ChargeLineType::CompanyRoyalty)[0];
 
         $this->assertSame('service_charge_only', $royalty->snapshot['basis']);
         $this->assertSame(50_000, $royalty->snapshot['basis_paise']);
@@ -261,7 +261,7 @@ final class ChargeBuilderTest extends TestCase
     }
 
     /**
-     * In-warranty spares are supplied by the vendor and produce no money —
+     * In-warranty spares are supplied by the company and produce no money —
      * only a return obligation, which lives on the ticket_spares row.
      */
     public function testInWarrantySparesProduceNoChargeLines(): void
@@ -273,7 +273,7 @@ final class ChargeBuilderTest extends TestCase
             quantity: 1,
             unitCost: Money::fromRupees(1800),
             marginPct: '0.00',
-            chargedTo: Payer::Vendor,
+            chargedTo: Payer::Company,
         );
 
         $charges = $this->priceJob(
@@ -287,7 +287,7 @@ final class ChargeBuilderTest extends TestCase
         $this->assertCount(0, $charges->ofType(ChargeLineType::SpareCost));
         $this->assertCount(0, $charges->ofType(ChargeLineType::SpareMargin));
         // Rs.400 service + Rs.75 incentive
-        $this->assertSame(47_500, $charges->vendorReceivable()->paise);
+        $this->assertSame(47_500, $charges->companyReceivable()->paise);
     }
 
     /**
@@ -329,7 +329,7 @@ final class ChargeBuilderTest extends TestCase
         $charges = $this->builder->build($rate, $matched, DianoraRateCard::terms(), $timing);
 
         // Net 24h, so the Rs.75 incentive stands: Rs.400 + Rs.75.
-        $this->assertSame(47_500, $charges->vendorReceivable()->paise);
+        $this->assertSame(47_500, $charges->companyReceivable()->paise);
         $this->assertSame(24.0, $timing->close->netHours());
     }
 
@@ -361,9 +361,9 @@ final class ChargeBuilderTest extends TestCase
     public function testAdjustmentCarriesItsReason(): void
     {
         $adjustment = $this->builder->adjustment(
-            Ledger::VendorReceivable,
+            Ledger::CompanyReceivable,
             Money::fromRupees(50)->negate(),
-            'Vendor disputed the travel distance; agreed 20km by email 2026-07-15',
+            'Company disputed the travel distance; agreed 20km by email 2026-07-15',
             authorisedByUserId: 3,
         );
 

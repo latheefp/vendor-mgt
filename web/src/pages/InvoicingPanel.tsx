@@ -6,9 +6,21 @@ import {
   type SettlementLine,
   type TechnicianPayout,
   type TechnicianPayoutDetail,
-  type VendorInvoice,
-  type VendorInvoiceDetail,
+  type CompanyInvoice,
+  type CompanyInvoiceDetail,
+  type CompanyItem,
+  type InvoicePreview,
 } from '../lib/api'
+
+/** First and last day of the month containing `date`, as `YYYY-MM-DD`. */
+function monthBounds(date: Date): { start: string; end: string } {
+  const year = date.getFullYear()
+  const month = date.getMonth()
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+  return { start: iso(new Date(year, month, 1)), end: iso(new Date(year, month + 1, 0)) }
+}
 
 /**
  * Which run a detail view belongs to.
@@ -20,7 +32,7 @@ import {
 type RunKind = 'invoice' | 'payout'
 
 export function InvoicingPanel() {
-  const [invoices, setInvoices] = useState<VendorInvoice[]>([])
+  const [invoices, setInvoices] = useState<CompanyInvoice[]>([])
   const [payouts, setPayouts] = useState<TechnicianPayout[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'invoices' | 'payouts'>('invoices')
@@ -30,12 +42,66 @@ export function InvoicingPanel() {
   // The opened run. `kind` decides which API the detail view writes back
   // through; `detail` is null only while the first fetch is in flight.
   const [openRun, setOpenRun] = useState<{ kind: RunKind; id: number } | null>(null)
-  const [detail, setDetail] = useState<VendorInvoiceDetail | TechnicianPayoutDetail | null>(null)
+  const [detail, setDetail] = useState<CompanyInvoiceDetail | TechnicianPayoutDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+
+  // Which company and which period the next run covers.
+  //
+  // Both are explicit and both default to *this* month. The server falls
+  // back to LAST month when a period is omitted, so a run fired without
+  // one silently skips everything closed since the 1st — which looked, on
+  // the ticket screen, like closing a job produced no invoice at all.
+  const [companies, setCompanies] = useState<CompanyItem[]>([])
+  const [companyId, setCompanyId] = useState<number | null>(null)
+  const [period, setPeriod] = useState(() => monthBounds(new Date()))
+  const [preview, setPreview] = useState<InvoicePreview | null>(null)
+  const [previewing, setPreviewing] = useState(false)
 
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const list = await api.listCompanies()
+        const active = list.filter((c) => c.is_active)
+        setCompanies(active)
+        setCompanyId((current) => current ?? active[0]?.id ?? null)
+      } catch (err) {
+        console.error('Failed to load companies', err)
+      }
+    })()
+  }, [])
+
+  // What the run would raise, shown before it is fired. An empty period is
+  // a 422 from generate, and a zero here says the same thing without
+  // looking like a failure.
+  useEffect(() => {
+    if (companyId === null || period.start === '' || period.end === '') {
+      setPreview(null)
+
+      return
+    }
+
+    let cancelled = false
+    setPreviewing(true)
+
+    void (async () => {
+      try {
+        const result = await api.previewInvoice(companyId, period.start, period.end)
+        if (!cancelled) setPreview(result)
+      } catch {
+        if (!cancelled) setPreview(null)
+      } finally {
+        if (!cancelled) setPreviewing(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, period.start, period.end])
 
   const loadData = async () => {
     setLoading(true)
@@ -81,7 +147,7 @@ export function InvoicingPanel() {
    * local edit would show a total that no longer matches its own parts.
    */
   const applyLineChange = async (
-    change: () => Promise<VendorInvoiceDetail | TechnicianPayoutDetail>,
+    change: () => Promise<CompanyInvoiceDetail | TechnicianPayoutDetail>,
     successText: string,
   ) => {
     const updated = await change()
@@ -92,17 +158,32 @@ export function InvoicingPanel() {
   }
 
   const handleGenerateInvoice = async () => {
+    if (companyId === null) {
+      setMessage({ type: 'error', text: 'Select the company to invoice.' })
+
+      return
+    }
+
     setGenerating(true)
     setMessage(null)
     try {
-      const created = await api.generateInvoice(1)
+      const created = await api.generateInvoice(companyId, period.start, period.end)
       setMessage({
         type: 'success',
-        text: `Vendor Invoice #${created.invoice_no} generated for ₹${(created.total_paise / 100).toFixed(2)}`,
+        text: `Company Invoice #${created.invoice_no} generated for ₹${(created.total_paise / 100).toFixed(2)}`,
       })
+      setPreview(null)
       void loadData()
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to generate invoice' })
+    } catch (err) {
+      // "Nothing is waiting to be invoiced" comes back per-field and says
+      // far more than the envelope's generic message.
+      setMessage({
+        type: 'error',
+        text:
+          err instanceof ApiError
+            ? Object.values(err.fields).flat().join(' ') || err.message
+            : 'Failed to generate invoice',
+      })
     } finally {
       setGenerating(false)
     }
@@ -133,7 +214,7 @@ export function InvoicingPanel() {
             Invoicing & Technician Payout Runs
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Generate vendor receivable statements and calculate technician payout settlements with frozen SLA ledger lines.
+            Generate company receivable statements and calculate technician payout settlements with frozen SLA ledger lines.
           </p>
         </div>
 
@@ -146,7 +227,7 @@ export function InvoicingPanel() {
                 : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
             }`}
           >
-            Vendor Invoices ({invoices.length})
+            Company Invoices ({invoices.length})
           </button>
           <button
             onClick={() => setActiveTab('payouts')}
@@ -173,25 +254,113 @@ export function InvoicingPanel() {
         </div>
       )}
 
-      {/* VENDOR INVOICES */}
+      {/* COMPANY INVOICES */}
       {activeTab === 'invoices' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <div>
               <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Vendor Receivable Statements
+                Company Receivable Statements
               </h2>
               <p className="text-xs text-slate-500">
-                Monthly cycle settlement run for vendor claims & spare part reimbursements.
+                Sweeps up every frozen charge line for a company whose ticket closed inside the
+                period, and claims it onto one invoice.
               </p>
             </div>
-            <button
-              onClick={handleGenerateInvoice}
-              disabled={generating}
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
-            >
-              {generating ? 'Generating Run...' : '+ Generate New Vendor Invoice Run'}
-            </button>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Company
+                </span>
+                <select
+                  value={companyId ?? ''}
+                  onChange={(e) => setCompanyId(e.target.value === '' ? null : Number(e.target.value))}
+                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Period from
+                </span>
+                <input
+                  type="date"
+                  value={period.start}
+                  onChange={(e) => setPeriod((p) => ({ ...p, start: e.target.value }))}
+                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  to
+                </span>
+                <input
+                  type="date"
+                  value={period.end}
+                  onChange={(e) => setPeriod((p) => ({ ...p, end: e.target.value }))}
+                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </label>
+
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => setPeriod(monthBounds(new Date()))}
+                  className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  This month
+                </button>
+                <button
+                  onClick={() => {
+                    const d = new Date()
+
+                    setPeriod(monthBounds(new Date(d.getFullYear(), d.getMonth() - 1, 1)))
+                  }}
+                  className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Last month
+                </button>
+              </div>
+
+              <button
+                onClick={handleGenerateInvoice}
+                disabled={generating || companyId === null || preview?.line_count === 0}
+                className="ml-auto rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+              >
+                {generating ? 'Generating Run…' : '+ Generate Invoice Run'}
+              </button>
+            </div>
+
+            {/* What the run will pick up, before it is fired. */}
+            <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/40">
+              {previewing ? (
+                <span className="text-slate-500">Checking what is waiting…</span>
+              ) : preview === null ? (
+                <span className="text-slate-500">Pick a company and a period.</span>
+              ) : preview.line_count === 0 ? (
+                <span className="text-slate-500">
+                  Nothing is waiting to be invoiced in this period. Charges are claimed by the
+                  period a ticket <strong>closed</strong> in — widen the dates if a job closed
+                  outside them.
+                </span>
+              ) : (
+                <span className="text-slate-700 dark:text-slate-300">
+                  Ready to bill{' '}
+                  <strong className="tabular-nums">
+                    ₹{(preview.totals.total_paise / 100).toFixed(2)}
+                  </strong>{' '}
+                  across {preview.ticket_count} ticket{preview.ticket_count === 1 ? '' : 's'} (
+                  {preview.line_count} line{preview.line_count === 1 ? '' : 's'}).
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -199,14 +368,14 @@ export function InvoicingPanel() {
               <div className="p-8 text-center text-sm text-slate-500">Loading invoices...</div>
             ) : invoices.length === 0 ? (
               <div className="p-8 text-center text-sm text-slate-500">
-                No vendor invoice runs generated yet. Click <strong>Generate New Vendor Invoice Run</strong> above.
+                No company invoice runs generated yet. Click <strong>Generate New Company Invoice Run</strong> above.
               </div>
             ) : (
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <tr>
                     <th className="px-4 py-3">Invoice #</th>
-                    <th className="px-4 py-3">Vendor</th>
+                    <th className="px-4 py-3">Company</th>
                     <th className="px-4 py-3">Billing Period</th>
                     <th className="px-4 py-3">Tickets Included</th>
                     <th className="px-4 py-3">Total Amount</th>
@@ -224,7 +393,7 @@ export function InvoicingPanel() {
                         {inv.invoice_no}
                       </td>
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
-                        {inv.vendor?.name}
+                        {inv.company?.name}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
                         {inv.period_start} to {inv.period_end}
@@ -342,11 +511,11 @@ export function InvoicingPanel() {
 interface SettlementDetailModalProps {
   kind: RunKind
   runId: number
-  detail: VendorInvoiceDetail | TechnicianPayoutDetail | null
+  detail: CompanyInvoiceDetail | TechnicianPayoutDetail | null
   loading: boolean
   onClose: () => void
   onApply: (
-    change: () => Promise<VendorInvoiceDetail | TechnicianPayoutDetail>,
+    change: () => Promise<CompanyInvoiceDetail | TechnicianPayoutDetail>,
     successText: string,
   ) => Promise<void>
 }
@@ -357,7 +526,7 @@ interface SettlementDetailModalProps {
  * Discriminates on the payload rather than on `kind` so the narrowing is
  * a fact about the data in hand, not a promise about which call produced it.
  */
-function isInvoice(detail: SettlementDetail): detail is VendorInvoiceDetail {
+function isInvoice(detail: SettlementDetail): detail is CompanyInvoiceDetail {
   return 'invoice_no' in detail
 }
 
@@ -392,7 +561,7 @@ function SettlementDetailModal({
   }
 
   const runChange = async (
-    change: () => Promise<VendorInvoiceDetail | TechnicianPayoutDetail>,
+    change: () => Promise<CompanyInvoiceDetail | TechnicianPayoutDetail>,
     successText: string,
   ) => {
     setSaving(true)
@@ -441,7 +610,7 @@ function SettlementDetailModal({
   const subject = detail === null
     ? null
     : isInvoice(detail)
-      ? detail.vendor?.name ?? null
+      ? detail.company?.name ?? null
       : detail.technician === null
         ? null
         : `${detail.technician.name} (${detail.technician.code})`
@@ -522,6 +691,13 @@ function SettlementDetailModal({
               <div className="my-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
                 {detail.locked_reason}
               </div>
+            )}
+
+            {!isInvoice(detail) && (
+              <PayoutSettlement
+                detail={detail}
+                onSettled={(text) => void onApply(() => api.getPayout(runId), text)}
+              />
             )}
 
             {lineError !== null && (
@@ -663,6 +839,155 @@ function SettlementDetailModal({
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Paying the technician                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Approving a payout, then recording how it was actually paid.
+ *
+ * The technician is paid by US — out of the margin between what the
+ * company is invoiced and what the technician earned. The company never
+ * pays a technician directly, which is why `technician_payable` is its own
+ * ledger and why nothing here touches the invoice side.
+ *
+ * That also means the payment leaves no external trace of its own. An
+ * invoice has an email and a Message-ID behind it; cash handed over has
+ * nothing but the method and reference captured here, so both are asked
+ * for at the moment of payment rather than reconstructed later.
+ *
+ * Approval and payment are deliberately two clicks by two people: paying
+ * an unapproved run removes the only control on this ledger, and the API
+ * refuses it.
+ */
+function PayoutSettlement({
+  detail,
+  onSettled,
+}: {
+  detail: TechnicianPayoutDetail
+  onSettled: (message: string) => void
+}) {
+  const [method, setMethod] = useState<string>(
+    detail.payment_methods[0]?.value ?? 'bank_transfer',
+  )
+  const [reference, setReference] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const selected = detail.payment_methods.find((m) => m.value === method) ?? null
+
+  const run = async (action: () => Promise<unknown>, successText: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      onSettled(successText)
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? Object.values(err.fields).flat().join(' ') || err.message
+          : 'That could not be saved.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (detail.payment.paid_at !== null) {
+    return (
+      <div className="my-4 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+        Paid {detail.payment.paid_at} by <strong>{detail.payment.method_label}</strong>
+        {detail.payment.reference !== null && ` · ref ${detail.payment.reference}`}. Settled from
+        our margin — the company is invoiced separately.
+      </div>
+    )
+  }
+
+  if (!detail.can_approve && !detail.can_pay) return null
+
+  return (
+    <div className="my-4 space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+        {detail.can_approve ? 'Approve this payout' : 'Record the payment'}
+      </p>
+
+      {error !== null && (
+        <p className="rounded-lg bg-rose-50 p-2 text-[11px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
+          {error}
+        </p>
+      )}
+
+      {detail.can_approve ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() =>
+              void run(
+                () => api.approvePayout(detail.id),
+                'Payout approved. It can now be paid.',
+              )
+            }
+            disabled={busy}
+            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {busy ? 'Approving…' : 'Approve'}
+          </button>
+          <span className="text-[11px] text-slate-500">
+            Approval is a separate decision from paying — an unapproved run cannot be paid.
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={method}
+              onChange={(e) => {
+                setMethod(e.target.value)
+                setReference('')
+              }}
+              className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            >
+              {detail.payment_methods.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+
+            <input
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder={selected?.reference_label ?? 'Reference'}
+              className="min-w-40 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
+
+            <button
+              onClick={() =>
+                void run(
+                  () =>
+                    api.payPayout(
+                      detail.id,
+                      method,
+                      reference.trim() === '' ? undefined : reference.trim(),
+                    ),
+                  'Payout marked paid.',
+                )
+              }
+              disabled={busy}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : `Mark paid — ${detail.totals.total.formatted}`}
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Paid by us from the margin, not by the company. The {selected?.reference_label.toLowerCase() ?? 'reference'} is
+            the only trace this payment leaves.
+          </p>
+        </>
+      )}
     </div>
   )
 }

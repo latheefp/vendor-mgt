@@ -9,7 +9,7 @@ use Cake\ORM\Entity;
  * Product Entity
  *
  * @property int $id
- * @property int $vendor_id
+ * @property int $company_id
  * @property int $product_category_id
  * @property string $model_no
  * @property string|null $name
@@ -21,7 +21,7 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\DateTime $modified
  * @property int|null $brand_id
  *
- * @property \App\Model\Entity\Vendor $vendor
+ * @property \App\Model\Entity\Company $company
  * @property \App\Model\Entity\ProductCategory $product_category
  * @property \App\Model\Entity\Brand $brand
  * @property \App\Model\Entity\Ticket[] $tickets
@@ -38,7 +38,7 @@ class Product extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'product_category_id' => true,
         'model_no' => true,
         'name' => true,
@@ -49,7 +49,7 @@ class Product extends Entity
         'created' => true,
         'modified' => true,
         'brand_id' => true,
-        'vendor' => true,
+        'company' => true,
         'product_category' => true,
         'brand' => true,
         'tickets' => true,

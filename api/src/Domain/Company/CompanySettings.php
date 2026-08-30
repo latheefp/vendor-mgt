@@ -28,7 +28,7 @@ final readonly class CompanySettings
      * @param array<string, string> $sources  setting key => 'company'|'platform'
      */
     public function __construct(
-        public int $vendorId,
+        public int $companyId,
         private array $values = [],
         private array $sources = [],
     ) {

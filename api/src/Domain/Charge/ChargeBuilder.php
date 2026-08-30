@@ -15,7 +15,7 @@ use InvalidArgumentException;
 /**
  * Turns a priced, measured, completed ticket into frozen charge lines.
  *
- * This runs ONCE, at closure. Everything downstream — the vendor invoice,
+ * This runs ONCE, at closure. Everything downstream — the company invoice,
  * the technician payout, every margin report — reads the rows it wrote
  * and never re-derives a rate. Recomputing later against live rate cards
  * would silently rewrite invoices that have already been sent, which is
@@ -88,7 +88,7 @@ final readonly class ChargeBuilder
     }
 
     /**
-     * The amount for the job itself. Lands on the vendor ledger for
+     * The amount for the job itself. Lands on the company ledger for
      * in-warranty and installation work, and on the customer-collection
      * ledger for out-of-warranty work.
      *
@@ -135,7 +135,7 @@ final readonly class ChargeBuilder
     }
 
     /**
-     * An incentive or deduction. Always settles with the vendor, even on a
+     * An incentive or deduction. Always settles with the company, even on a
      * job the customer paid for — an SLA term is between us and them.
      *
      * Penalties are negative here by design; see ChargeLine for why.
@@ -144,7 +144,7 @@ final readonly class ChargeBuilder
     {
         return new ChargeLine(
             type: $matched->rule->kind->chargeLineType(),
-            ledger: Ledger::VendorReceivable,
+            ledger: Ledger::CompanyReceivable,
             description: $matched->description(),
             amount: $matched->amount(),
             sourceRefs: ['sla_rule_id' => $matched->rule->id],
@@ -169,7 +169,7 @@ final readonly class ChargeBuilder
 
         return new ChargeLine(
             type: ChargeLineType::Travel,
-            ledger: Ledger::VendorReceivable,
+            ledger: Ledger::CompanyReceivable,
             description: sprintf(
                 'Travel %s km beyond %g km free radius @ %s/km',
                 $quantity,
@@ -195,7 +195,7 @@ final readonly class ChargeBuilder
      * than buried in a single total — both for the customer's receipt and
      * for our own reporting.
      *
-     * In-warranty parts are supplied by the vendor and produce no charge
+     * In-warranty parts are supplied by the company and produce no charge
      * line; what they produce is a return obligation, tracked on the
      * ticket_spares row.
      *
@@ -252,7 +252,7 @@ final readonly class ChargeBuilder
      * a royalty queried in a year explains which reading produced it.
      *
      * Takes the payer and the base amount rather than the ResolvedRate,
-     * because a manually agreed charge is still a collection the vendor is
+     * because a manually agreed charge is still a collection the company is
      * owed a royalty on. Reading the rate here instead would quietly hand
      * us the royalty on a job we overrode.
      *
@@ -286,10 +286,10 @@ final readonly class ChargeBuilder
         }
 
         return new ChargeLine(
-            type: ChargeLineType::VendorRoyalty,
-            ledger: Ledger::VendorPayable,
+            type: ChargeLineType::CompanyRoyalty,
+            ledger: Ledger::CompanyPayable,
             description: sprintf(
-                'Vendor royalty %s%% on %s of %s',
+                'Company royalty %s%% on %s of %s',
                 $terms->oowRoyaltyPct,
                 $terms->royaltyAppliesToSpares ? 'out-of-warranty collection' : 'out-of-warranty service charge',
                 $basis->format(),
@@ -314,6 +314,34 @@ final readonly class ChargeBuilder
      * Requires a reason, because an adjustment with no explanation is
      * indistinguishable from a mistake when it surfaces in an audit.
      */
+    /**
+     * Additional service agreed on an open job — a BOQ line.
+     *
+     * Kept apart from adjustment() because the two answer different
+     * questions at audit time: a BOQ line says "this work was agreed and
+     * billed", an adjustment says "the bill we already sent was wrong".
+     * Collapsing them would make every corrected invoice indistinguishable
+     * from a job that simply had extra work on it.
+     */
+    public function boqLine(
+        Ledger $ledger,
+        Money $amount,
+        string $description,
+        ?int $agreedByUserId = null,
+    ): ChargeLine {
+        return new ChargeLine(
+            type: ChargeLineType::Boq,
+            ledger: $ledger,
+            description: $description,
+            amount: $amount,
+            snapshot: [
+                'description' => $description,
+                'agreed_by_user_id' => $agreedByUserId,
+                'agreed_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+            ],
+        );
+    }
+
     public function adjustment(
         Ledger $ledger,
         Money $amount,

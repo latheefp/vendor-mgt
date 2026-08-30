@@ -11,7 +11,7 @@ use Cake\Validation\Validator;
 /**
  * Brands Model
  *
- * @property \App\Model\Table\VendorsTable&\Cake\ORM\Association\BelongsTo $Vendors
+ * @property \App\Model\Table\CompaniesTable&\Cake\ORM\Association\BelongsTo $Companies
  * @property \App\Model\Table\ProductsTable&\Cake\ORM\Association\HasMany $Products
  * @property \App\Model\Table\TicketsTable&\Cake\ORM\Association\HasMany $Tickets
  *
@@ -49,8 +49,8 @@ class BrandsTable extends Table
 
         $this->addBehavior('Timestamp');
 
-        $this->belongsTo('Vendors', [
-            'foreignKey' => 'vendor_id',
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
             'joinType' => 'INNER',
         ]);
         $this->hasMany('Products', [
@@ -70,7 +70,7 @@ class BrandsTable extends Table
     public function validationDefault(Validator $validator): Validator
     {
         $validator
-            ->notEmptyString('vendor_id');
+            ->notEmptyString('company_id');
 
         $validator
             ->scalar('code')
@@ -103,8 +103,8 @@ class BrandsTable extends Table
      */
     public function buildRules(RulesChecker $rules): RulesChecker
     {
-        $rules->add($rules->isUnique(['vendor_id', 'code']), ['errorField' => 'vendor_id', 'message' => __('This combination of vendor_id and code already exists')]);
-        $rules->add($rules->existsIn(['vendor_id'], 'Vendors'), ['errorField' => 'vendor_id']);
+        $rules->add($rules->isUnique(['company_id', 'code']), ['errorField' => 'company_id', 'message' => __('This combination of company_id and code already exists')]);
+        $rules->add($rules->existsIn(['company_id'], 'Companies'), ['errorField' => 'company_id']);
 
         return $rules;
     }

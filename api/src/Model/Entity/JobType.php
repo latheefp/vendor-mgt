@@ -9,7 +9,7 @@ use Cake\ORM\Entity;
  * JobType Entity
  *
  * @property int $id
- * @property int|null $vendor_id
+ * @property int|null $company_id
  * @property string|null $override_note
  * @property string $code
  * @property string $name
@@ -24,7 +24,7 @@ use Cake\ORM\Entity;
  *
  * @property \App\Model\Entity\RateCardItem[] $rate_card_items
  * @property \App\Model\Entity\Ticket[] $tickets
- * @property \App\Model\Entity\VendorJobTypeAlias[] $vendor_job_type_aliases
+ * @property \App\Model\Entity\CompanyJobTypeAlias[] $company_job_type_aliases
  */
 class JobType extends Entity
 {
@@ -38,7 +38,7 @@ class JobType extends Entity
      * @var array<string, bool>
      */
     protected array $_accessible = [
-        'vendor_id' => true,
+        'company_id' => true,
         'override_note' => true,
         'code' => true,
         'name' => true,
@@ -52,6 +52,6 @@ class JobType extends Entity
         'modified' => true,
         'rate_card_items' => true,
         'tickets' => true,
-        'vendor_job_type_aliases' => true,
+        'company_job_type_aliases' => true,
     ];
 }

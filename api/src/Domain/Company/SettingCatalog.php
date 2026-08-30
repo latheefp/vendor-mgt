@@ -8,7 +8,7 @@ namespace App\Domain\Company;
  *
  * This is the boundary between "a setting" and "a column". Anything with
  * commercial weight — a rate, a royalty percentage, an SLA window — is a
- * column on `rate_card_items` or `vendor_agreements`, because it is
+ * column on `rate_card_items` or `company_agreements`, because it is
  * versioned, referenced by frozen charge lines and has to be explainable
  * against a signed document years later. What lands here is the rest: the
  * operational and presentational dials that differ per company but never
@@ -25,15 +25,18 @@ final class SettingCatalog
     public const TICKET_SEQUENCE_WIDTH = 'ticket.sequence_width';
     public const TICKET_REQUIRE_SERIAL = 'ticket.require_serial_no';
     public const TICKET_REQUIRE_BILL_DATE = 'ticket.require_bill_date';
+    public const TICKET_DEFAULT_DISTRICT_CODE = 'ticket.default_district_code';
+    public const TICKET_DEFAULT_SERVICE_CENTER_CODE = 'ticket.default_service_center_code';
 
     public const CLOSURE_REQUIRE_PHOTO = 'closure.require_photo';
     public const CLOSURE_REQUIRE_SIGNATURE = 'closure.require_customer_signature';
     public const CLOSURE_REQUIRE_OTP = 'closure.require_customer_otp';
+    public const CLOSURE_DEFAULT_SERVICE_CHARGE = 'closure.default_service_charge';
 
     public const IMPORT_UNKNOWN_JOB_TYPE = 'import.on_unknown_job_type';
     public const IMPORT_UNKNOWN_DISTRICT = 'import.on_unknown_district';
 
-    public const NOTICE_EMAIL_ON_HOLD = 'notice.email_vendor_on_hold';
+    public const NOTICE_EMAIL_ON_HOLD = 'notice.email_company_on_hold';
     public const NOTICE_SLA_BREACH_HOURS_BEFORE = 'notice.sla_breach_warning_hours';
 
     public const BRAND_PRIMARY_COLOR = 'brand.primary_color';
@@ -41,6 +44,8 @@ final class SettingCatalog
 
     public const LEDGER_CURRENCY = 'ledger.currency';
     public const CASH_DEPOSIT_DAYS = 'cash.deposit_within_days';
+
+    public const ASSIGNMENT_ENFORCE_TECHNICIAN_RULES = 'assignment.enforce_technician_rules';
 
     /**
      * @var array<string, SettingDefinition>|null
@@ -123,6 +128,25 @@ final class SettingCatalog
                 description: 'Block intake when no purchase date is supplied.',
                 group: 'tickets',
             ),
+            new SettingDefinition(
+                key: self::TICKET_DEFAULT_DISTRICT_CODE,
+                type: 'string',
+                label: 'Default district at intake',
+                // Most tickets taken at the desk are for this district, so
+                // pre-selecting it is a click saved on nearly every intake
+                // rather than a guess.
+                default: 'KKD',
+                description: 'District pre-selected on a new ticket until the desk changes it.',
+                group: 'tickets',
+            ),
+            new SettingDefinition(
+                key: self::TICKET_DEFAULT_SERVICE_CENTER_CODE,
+                type: 'string',
+                label: 'Default service center at intake',
+                default: 'THA',
+                description: 'Service center pre-selected on a new ticket until the desk changes it.',
+                group: 'tickets',
+            ),
 
             new SettingDefinition(
                 key: self::CLOSURE_REQUIRE_PHOTO,
@@ -151,6 +175,14 @@ final class SettingCatalog
                 label: 'Customer OTP required at closure',
                 default: false,
                 description: 'Strongest closure proof; also the slowest in poor coverage.',
+                group: 'closure',
+            ),
+            new SettingDefinition(
+                key: self::CLOSURE_DEFAULT_SERVICE_CHARGE,
+                type: 'integer',
+                label: 'Default basic service charge (₹)',
+                default: 400,
+                description: 'Default basic service fee automatically added to ticket ledger at closure (e.g. ₹400 for Dianora).',
                 group: 'closure',
             ),
 
@@ -236,6 +268,21 @@ final class SettingCatalog
                 // company doing high cash volume will want it tighter.
                 description: 'Days a technician may hold cash collected on this company\'s jobs.',
                 group: 'ledger',
+            ),
+
+            new SettingDefinition(
+                key: self::ASSIGNMENT_ENFORCE_TECHNICIAN_RULES,
+                type: 'boolean',
+                label: 'Enforce technician assignment rules',
+                default: true,
+                // On by default: a technician assigned outside their
+                // skills or over their open-job limit is how a second
+                // visit or a missed SLA gets discovered on site instead of
+                // at the desk. Some companies run a small enough bench
+                // that the desk would rather assign freely than have every
+                // dispatcher click through a per-assignment override.
+                description: 'Block assigning a technician who lacks the required skill or is already at their open-job limit. Turn off to let the desk assign anyone without a per-assignment override.',
+                group: 'assignment',
             ),
         ];
 

@@ -12,15 +12,15 @@ use App\Domain\Money;
  *
  * Sign convention, fixed here and relied on everywhere downstream:
  *
- *   Amounts are POSITIVE magnitudes on their own ledger. A vendor payable
- *   of Rs.150 means we owe the vendor Rs.150; it is not stored as -150 on
+ *   Amounts are POSITIVE magnitudes on their own ledger. A company payable
+ *   of Rs.150 means we owe the company Rs.150; it is not stored as -150 on
  *   the receivable ledger. `Ledger::isInflow()` supplies direction when
  *   the margin is computed.
  *
- *   The one exception is an SLA penalty, which is NEGATIVE on the vendor
+ *   The one exception is an SLA penalty, which is NEGATIVE on the company
  *   receivable ledger, because that is what it genuinely is: a deduction
- *   from what the vendor owes for that job, not a separate debt. Printing
- *   it as a negative line on the invoice is also what the vendor expects
+ *   from what the company owes for that job, not a separate debt. Printing
+ *   it as a negative line on the invoice is also what the company expects
  *   to see.
  *
  * `sourceRefs` is what makes a line defensible. Every amount points back

@@ -13,7 +13,7 @@ use Cake\Http\Response;
 /**
  * Everything that makes one company differ from the next.
  *
- * A company here is a `vendor` row — the manufacturer whose warranty work
+ * A company here is a `company` row — the manufacturer whose warranty work
  * we perform. Dianora is the only one today; the endpoints below exist so
  * the second one is an afternoon of data entry rather than a release.
  *
@@ -40,7 +40,7 @@ class CompaniesController extends ApiController
         // even during development.
         $this->Authentication->allowUnauthenticated([
             'index', 'view', 'settings', 'masterLists', 'rateCards', 'rateCard', 'settingCatalog',
-            'add', 'edit', 'createRateCard', 'addRateCardItem', 'addSlaRule', 'publishRateCard',
+            'add', 'edit', 'delete', 'createRateCard', 'addRateCardItem', 'addSlaRule', 'publishRateCard',
             'deleteRateCardItem', 'deleteSlaRule',
         ]);
     }
@@ -50,7 +50,7 @@ class CompaniesController extends ApiController
      */
     public function index(): Response
     {
-        $companies = $this->fetchTable('Vendors')->find()
+        $companies = $this->fetchTable('Companies')->find()
             ->select(['id', 'code', 'name', 'legal_name', 'is_active', 'logo_path', 'onboarded_on'])
             ->orderBy(['name' => 'ASC'])
             ->all();
@@ -63,23 +63,23 @@ class CompaniesController extends ApiController
      */
     public function add(): Response
     {
-        $vendorsTable = $this->fetchTable('Vendors');
+        $companiesTable = $this->fetchTable('Companies');
         $data = (array)$this->request->getData();
 
         if (empty($data['onboarded_on'])) {
             $data['onboarded_on'] = date('Y-m-d');
         }
 
-        $vendor = $vendorsTable->newEntity($data);
-        if ($vendor->hasErrors()) {
-            return $this->fail('validation_error', 'Invalid vendor data.', 422, $vendor->getErrors());
+        $company = $companiesTable->newEntity($data);
+        if ($company->hasErrors()) {
+            return $this->fail('validation_error', 'Invalid company data.', 422, $company->getErrors());
         }
 
-        if (!$vendorsTable->save($vendor)) {
-            return $this->fail('save_failed', 'Could not create vendor.', 400, $vendor->getErrors());
+        if (!$companiesTable->save($company)) {
+            return $this->fail('save_failed', 'Could not create company.', 400, $company->getErrors());
         }
 
-        return $this->respond($vendor, [], 201);
+        return $this->respond($company, [], 201);
     }
 
     /**
@@ -89,25 +89,55 @@ class CompaniesController extends ApiController
     {
         $id = $this->routeParam('id', $id);
 
-        $vendorsTable = $this->fetchTable('Vendors');
-        $vendor = $vendorsTable->find()->where(['id' => (int)$id])->first();
+        $companiesTable = $this->fetchTable('Companies');
+        $company = $companiesTable->find()->where(['id' => (int)$id])->first();
 
-        if ($vendor === null) {
-            return $this->fail('not_found', 'Vendor not found.', 404);
+        if ($company === null) {
+            return $this->fail('not_found', 'Company not found.', 404);
         }
 
         $data = (array)$this->request->getData();
-        $vendor = $vendorsTable->patchEntity($vendor, $data);
+        $company = $companiesTable->patchEntity($company, $data);
 
-        if ($vendor->hasErrors()) {
-            return $this->fail('validation_error', 'Invalid vendor data.', 422, $vendor->getErrors());
+        if ($company->hasErrors()) {
+            return $this->fail('validation_error', 'Invalid company data.', 422, $company->getErrors());
         }
 
-        if (!$vendorsTable->save($vendor)) {
-            return $this->fail('save_failed', 'Could not update vendor.', 400, $vendor->getErrors());
+        if (!$companiesTable->save($company)) {
+            return $this->fail('save_failed', 'Could not update company.', 400, $company->getErrors());
         }
 
-        return $this->respond($vendor);
+        return $this->respond($company);
+    }
+
+    /**
+     * DELETE /api/companies/{id}
+     */
+    public function delete(?string $id = null): Response
+    {
+        $id = $this->routeParam('id', $id);
+
+        $companiesTable = $this->fetchTable('Companies');
+        $company = $companiesTable->find()->where(['id' => (int)$id])->first();
+
+        if ($company === null) {
+            return $this->fail('not_found', 'Company not found.', 404);
+        }
+
+        $ticketCount = $this->fetchTable('Tickets')->find()->where(['company_id' => $company->id])->count();
+        if ($ticketCount > 0) {
+            $company->is_active = !$company->is_active;
+            $companiesTable->saveOrFail($company);
+            return $this->respond([
+                'id' => $company->id,
+                'is_active' => $company->is_active,
+                'deleted' => false,
+                'message' => $company->is_active ? 'Company activated.' : 'Company deactivated (has ticket history).',
+            ]);
+        }
+
+        $companiesTable->delete($company);
+        return $this->respond(['id' => (int)$id, 'deleted' => true]);
     }
 
     /**
@@ -121,7 +151,7 @@ class CompaniesController extends ApiController
     {
         $companyId = (int)$this->routeParam('id', $id);
 
-        $company = $this->fetchTable('Vendors')->find()
+        $company = $this->fetchTable('Companies')->find()
             ->where(['id' => $companyId])
             ->first();
 
@@ -129,14 +159,14 @@ class CompaniesController extends ApiController
             return $this->fail('not_found', 'No such company.', 404);
         }
 
-        $agreement = $this->fetchTable('VendorAgreements')->find()
-            ->where(['vendor_id' => $companyId, 'status' => 'active'])
+        $agreement = $this->fetchTable('CompanyAgreements')->find()
+            ->where(['company_id' => $companyId, 'status' => 'active'])
             ->orderByDesc('effective_from')
             ->first();
 
         $activeCard = $this->fetchTable('RateCards')->find()
             ->select(['id', 'name', 'version', 'effective_from', 'effective_to', 'published_at'])
-            ->where(['vendor_id' => $companyId, 'status' => 'active'])
+            ->where(['company_id' => $companyId, 'status' => 'active'])
             ->orderByDesc('effective_from')
             ->first();
 
@@ -296,7 +326,7 @@ class CompaniesController extends ApiController
         $id = $this->routeParam('id', $id);
 
         $cards = $this->fetchTable('RateCards')->find()
-            ->where(['vendor_id' => (int)$id])
+            ->where(['company_id' => (int)$id])
             ->orderByDesc('version')
             ->all();
 
@@ -318,7 +348,7 @@ class CompaniesController extends ApiController
         $cardId = $this->routeParam('card_id', $cardId);
 
         $card = $this->fetchTable('RateCards')->find()
-            ->where(['id' => (int)$cardId, 'vendor_id' => (int)$id])
+            ->where(['id' => (int)$cardId, 'company_id' => (int)$id])
             ->first();
 
         if ($card === null) {

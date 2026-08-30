@@ -177,7 +177,7 @@ let lastMeta: Record<string, unknown> | undefined
  * Build `?a=1&b=2`, dropping anything unset.
  *
  * Undefined keys are dropped rather than sent empty because the API reads
- * a missing filter as "all" and an empty one as a value — `vendor_id=`
+ * a missing filter as "all" and an empty one as a value — `company_id=`
  * would be a request for company zero.
  */
 function queryString(params?: Record<string, string | number | boolean | undefined>): string {
@@ -245,8 +245,8 @@ export const api = {
 
   getDashboardStats: () => request<DashboardStats>('/tickets/dashboard-stats'),
 
-  ticketOptions: (vendorId?: number) =>
-    request<TicketOptions>('/tickets/options' + (vendorId ? `?vendor_id=${vendorId}` : '')),
+  ticketOptions: (companyId?: number) =>
+    request<TicketOptions>('/tickets/options' + (companyId ? `?company_id=${companyId}` : '')),
 
   listTickets: (params?: Record<string, string>) =>
     request<Ticket[]>('/tickets' + (params ? '?' + new URLSearchParams(params).toString() : '')),
@@ -255,6 +255,9 @@ export const api = {
 
   createTicket: (payload: Record<string, unknown>) =>
     request<Ticket>('/tickets', { method: 'POST', body: payload }),
+
+  updateTicket: (id: number, payload: Record<string, unknown>) =>
+    request<Ticket>(`/tickets/${id}`, { method: 'PUT', body: payload }),
 
   assignTicket: (id: number, technicianId: number) =>
     request<Ticket>(`/tickets/${id}/assign`, { method: 'POST', body: { technician_id: technicianId } }),
@@ -329,6 +332,16 @@ export const api = {
     },
   ) => request<AddSpareResult>(`/tickets/${id}/spares`, { method: 'POST', body: spare }),
 
+  /**
+   * Withdraw a part recorded in error, putting the stock back where it
+   * came from. Replacing one is this followed by `addTicketSpare`.
+   *
+   * Refused once the ticket's charges are frozen — the line has been
+   * billed by then, and the correction is an adjustment instead.
+   */
+  removeTicketSpare: (id: number, spareId: number) =>
+    request<Ticket>(`/tickets/${id}/spares/${spareId}`, { method: 'DELETE' }),
+
   returnTicketSpare: (id: number, spareId: number, reference?: string) =>
     request<unknown>(`/tickets/${id}/spares/${spareId}/return`, {
       method: 'POST',
@@ -339,13 +352,13 @@ export const api = {
   // The ledger side: what a centre holds, where it is, and how long it
   // has been held. Fitting a part is a ticket action and lives above.
 
-  spareCatalogue: (params?: { vendor_id?: number; service_center_id?: number; include_inactive?: boolean; q?: string }) =>
+  spareCatalogue: (params?: { company_id?: number; service_center_id?: number; include_inactive?: boolean; q?: string }) =>
     request<SparePartOption[]>('/spares/catalogue' + queryString(params)),
 
   createSparePart: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>('/spares/catalogue', { method: 'POST', body: payload }),
 
-  spareStock: (params?: { vendor_id?: number; service_center_id?: number }) =>
+  spareStock: (params?: { company_id?: number; service_center_id?: number }) =>
     requestEnvelope<SpareStockRow[], SpareStockSummary>('/spares/stock' + queryString(params)),
 
   spareHoldings: (params?: { service_center_id?: number }) =>
@@ -355,7 +368,7 @@ export const api = {
     request<SpareMovement[]>(`/spares/${sparePartId}/movements` + queryString(params)),
 
   /** Clause 10 against stock still in our possession. */
-  spareAgeing: (params?: { vendor_id?: number; service_center_id?: number; within_days?: number }) =>
+  spareAgeing: (params?: { company_id?: number; service_center_id?: number; within_days?: number }) =>
     requestEnvelope<SpareAgeingLot[], SpareAgeingTotals>('/spares/ageing' + queryString(params)),
 
   receiveSpares: (payload: {
@@ -401,7 +414,7 @@ export const api = {
   }) => request<{ movement_id: number; delta: number }>('/spares/count', { method: 'POST', body: payload }),
 
   /** Clause 9 settles per consignment, so both ends of it are batches. */
-  listDefectiveReturns: (params?: { vendor_id?: number; within_days?: number }) =>
+  listDefectiveReturns: (params?: { company_id?: number; within_days?: number }) =>
     request<DefectiveReturnDue[]>('/spares/defective-returns' + queryString(params)),
 
   sendDefectiveBatch: (ticketSpareIds: number[], reference: string) =>
@@ -428,7 +441,7 @@ export const api = {
        */
       override_base_amount?: string
       override_reason?: string
-      override_payer?: 'vendor' | 'customer'
+      override_payer?: 'company' | 'customer'
     },
   ) => request<Ticket>(`/tickets/${id}/close`, { method: 'POST', body: closure }),
 
@@ -464,6 +477,18 @@ export const api = {
 
   getTicketCharges: (id: number) => request<TicketLedger>(`/tickets/${id}/charges`),
 
+  /** Records extra work agreed on an open job — a BOQ line. Part of the bill
+   *  being assembled, so it does not freeze the ticket. Refused once the
+   *  charges are frozen, where the correction is an adjustment instead. */
+  addTicketServiceLine: (
+    id: number,
+    line: { ledger: string; amount: string; description: string; notes?: string },
+  ) =>
+    request<{ charge_id: number; line: RatePreviewLine; totals: Record<string, Money> }>(
+      `/tickets/${id}/charges`,
+      { method: 'POST', body: line },
+    ),
+
   /** Corrects a frozen ticket by appending. A negative `amount` reduces the
    *  ledger, which is how a conceded dispute is recorded. */
   addTicketAdjustment: (
@@ -475,24 +500,72 @@ export const api = {
       { method: 'POST', body: adjustment },
     ),
 
+  removeTicketCharge: (id: number, chargeId: number) =>
+    request<Ticket>(`/tickets/${id}/charges/${chargeId}`, { method: 'DELETE' }),
+
   listTicketComments: (id: number, visibility?: string) =>
     request<TicketComment[]>(
       `/tickets/${id}/comments` + (visibility ? `?visibility=${visibility}` : ''),
     ),
 
-  addTicketComment: (id: number, body: string, visibility: 'internal' | 'vendor' | 'customer' = 'internal') =>
+  addTicketComment: (id: number, body: string, visibility: 'internal' | 'company' | 'customer' = 'internal') =>
     request<{ event_id: number }>(`/tickets/${id}/comments`, {
       method: 'POST',
       body: { body, visibility },
     }),
 
-  listInvoices: () => request<VendorInvoice[]>('/invoices'),
+  listInvoices: (companyId?: number) =>
+    request<CompanyInvoice[]>('/invoices' + (companyId ? `?company_id=${companyId}` : '')),
 
-  generateInvoice: (vendorId: number) =>
-    request<VendorInvoice>('/invoices/generate', { method: 'POST', body: { vendor_id: vendorId } }),
+  /**
+   * What a run would raise, without raising it.
+   *
+   * Worth calling before generate: the run refuses an empty period with a
+   * 422, and "nothing to invoice" is far more useful shown as a zero
+   * beside the period picker than as an error after the click.
+   */
+  previewInvoice: (companyId: number, periodStart: string, periodEnd: string) =>
+    request<InvoicePreview>(
+      `/invoices/preview?company_id=${companyId}&period_start=${periodStart}&period_end=${periodEnd}`,
+    ),
+
+  /**
+   * Raise a draft invoice for a company over a period.
+   *
+   * The period is always sent explicitly. The server falls back to LAST
+   * month when it is omitted, which silently skips everything closed this
+   * month — the reason freshly closed tickets appeared to vanish.
+   */
+  generateInvoice: (companyId: number, periodStart: string, periodEnd: string) =>
+    request<CompanyInvoice>('/invoices/generate', {
+      method: 'POST',
+      body: { company_id: companyId, period_start: periodStart, period_end: periodEnd },
+    }),
+
+  /** Serve a draft. Clause 11 recognises email only, so one is required. */
+  sendInvoice: (id: number, email: string, messageId?: string) =>
+    request<CompanyInvoice>(`/invoices/${id}/send`, {
+      method: 'POST',
+      body: { email, message_id: messageId ?? null },
+    }),
+
+  /**
+   * Record money received against an invoice.
+   *
+   * Paise, not rupees — the caller converts, because this is the one
+   * number in the app that must never round.
+   */
+  recordInvoicePayment: (id: number, amountPaise: number, reference?: string) =>
+    request<{ ok: boolean; paid_paise: number; status: string }>(`/invoices/${id}/payment`, {
+      method: 'POST',
+      body: { amount_paise: amountPaise, reference: reference ?? null },
+    }),
+
+  listReceivables: (asOf?: string) =>
+    request<ReceivablesReport>('/receivables' + (asOf ? `?as_of=${asOf}` : '')),
 
   /** The total broken into buckets, and every line behind it. */
-  getInvoice: (id: number) => request<VendorInvoiceDetail>(`/invoices/${id}`),
+  getInvoice: (id: number) => request<CompanyInvoiceDetail>(`/invoices/${id}`),
 
   /**
    * Restate one line on a draft invoice.
@@ -502,13 +575,13 @@ export const api = {
    * amount it was raised at comes back as `original_amount`.
    */
   overrideInvoiceLine: (id: number, lineId: number, amount: string, reason: string) =>
-    request<VendorInvoiceDetail>(`/invoices/${id}/lines/${lineId}`, {
+    request<CompanyInvoiceDetail>(`/invoices/${id}/lines/${lineId}`, {
       method: 'PATCH',
       body: { amount, reason },
     }),
 
   resetInvoiceLine: (id: number, lineId: number) =>
-    request<VendorInvoiceDetail>(`/invoices/${id}/lines/${lineId}`, { method: 'DELETE' }),
+    request<CompanyInvoiceDetail>(`/invoices/${id}/lines/${lineId}`, { method: 'DELETE' }),
 
   listPayouts: () => request<TechnicianPayout[]>('/payouts'),
 
@@ -516,6 +589,22 @@ export const api = {
     request<TechnicianPayout>('/payouts/generate', { method: 'POST', body: { technician_id: technicianId } }),
 
   getPayout: (id: number) => request<TechnicianPayoutDetail>(`/payouts/${id}`),
+
+  /** Draft → approved. A separate decision from paying it. */
+  approvePayout: (id: number) =>
+    request<TechnicianPayout>(`/payouts/${id}/approve`, { method: 'POST' }),
+
+  /**
+   * Approved → paid, recording how the money actually moved.
+   *
+   * The technician is paid by us out of our margin, never by the company,
+   * so the method and reference are the only trace the payment leaves.
+   */
+  payPayout: (id: number, method: string, reference?: string) =>
+    request<TechnicianPayout>(`/payouts/${id}/pay`, {
+      method: 'POST',
+      body: { method, reference: reference ?? null },
+    }),
 
   overridePayoutLine: (id: number, lineId: number, amount: string, reason: string) =>
     request<TechnicianPayoutDetail>(`/payouts/${id}/lines/${lineId}`, {
@@ -546,13 +635,15 @@ export const api = {
     request<RoleItem>(`/roles/${id}`, { method: 'PUT', body: payload }),
   deleteRole: (id: number) => request<{ id: number; deleted: boolean }>(`/roles/${id}`, { method: 'DELETE' }),
 
-  // ---- Vendors ----
-  listCompanies: () => request<VendorItem[]>('/companies'),
+  // ---- Companies ----
+  listCompanies: () => request<CompanyItem[]>('/companies'),
   getCompany: (id: number) => request<Record<string, unknown>>(`/companies/${id}`),
   createCompany: (payload: Record<string, unknown>) =>
-    request<VendorItem>('/companies', { method: 'POST', body: payload }),
+    request<CompanyItem>('/companies', { method: 'POST', body: payload }),
   updateCompany: (id: number, payload: Record<string, unknown>) =>
-    request<VendorItem>(`/companies/${id}`, { method: 'PUT', body: payload }),
+    request<CompanyItem>(`/companies/${id}`, { method: 'PUT', body: payload }),
+  deleteCompany: (id: number) =>
+    request<{ id: number; deleted?: boolean; is_active?: boolean; message?: string }>(`/companies/${id}`, { method: 'DELETE' }),
   updateCompanySettings: (id: number, settings: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/companies/${id}/settings`, { method: 'PUT', body: { settings } }),
 
@@ -587,6 +678,16 @@ export const api = {
   toggleProductStatus: (id: number) =>
     request<{ id: number; is_active: boolean }>(`/products/${id}`, { method: 'DELETE' }),
 
+  // ---- Technicians ----
+  listTechnicians: (params?: Record<string, string>) =>
+    request<TechnicianItem[]>('/technicians' + (params ? '?' + new URLSearchParams(params).toString() : '')),
+  createTechnician: (payload: Record<string, unknown>) =>
+    request<TechnicianItem>('/technicians', { method: 'POST', body: payload }),
+  updateTechnician: (id: number, payload: Record<string, unknown>) =>
+    request<TechnicianItem>(`/technicians/${id}`, { method: 'PUT', body: payload }),
+  toggleTechnicianStatus: (id: number) =>
+    request<{ id: number; is_active: boolean }>(`/technicians/${id}`, { method: 'DELETE' }),
+
   // ---- Master Lists ----
   listMasterLists: () => request<Record<string, unknown[]>>('/master-lists'),
   addMasterListItem: (list: string, payload: Record<string, unknown>) =>
@@ -611,6 +712,26 @@ export interface UserItem {
   service_center?: { id: number; code: string; name: string } | null
 }
 
+export interface TechnicianItem {
+  id: number
+  user_id: number | null
+  service_center_id: number
+  code: string
+  name: string
+  phone: string
+  alt_phone: string | null
+  email: string | null
+  employment_type: string
+  joined_on: string | null
+  exited_on: string | null
+  skills: string[] | null
+  max_open_tickets: number
+  is_active: boolean
+  notes: string | null
+  service_center?: { id: number; code: string; name: string }
+  user?: { id: number; name: string; email: string } | null
+}
+
 export interface RoleItem {
   id: number
   code: string
@@ -621,7 +742,7 @@ export interface RoleItem {
   user_count?: number
 }
 
-export interface VendorItem {
+export interface CompanyItem {
   id: number
   code: string
   name: string
@@ -642,7 +763,7 @@ export interface ProductCategoryItem {
 
 export interface ProductItem {
   id: number
-  vendor_id: number
+  company_id: number
   product_category_id: number
   model_no: string
   name: string | null
@@ -650,21 +771,79 @@ export interface ProductItem {
   warranty_months: number | null
   panel_warranty_months: number | null
   is_active: boolean
-  vendor?: VendorItem
+  company?: CompanyItem
   product_category?: ProductCategoryItem
 }
 
-export interface VendorInvoice {
+export interface CompanyInvoice {
   id: number
   invoice_no: string
   period_start: string
   period_end: string
   status: string
   total_paise: number
+  paid_paise: number
+  due_at: string | null
+  sent_at: string | null
   ticket_count: number
   created: string
-  vendor?: OptionItem
-  vendor_invoice_lines?: Array<{ id: number; description: string; amount_paise: number }>
+  company?: OptionItem
+  company_invoice_lines?: Array<{ id: number; description: string; amount_paise: number }>
+}
+
+/**
+ * What one company owes, split by how far along it is.
+ *
+ * The four stages are deliberately not summed into one figure on the
+ * wire. `unbilled` is closed work no invoice has claimed — it is money
+ * earned, but the company has never been told about it, so it is chased
+ * by running a billing cycle, not by ringing accounts. `awaiting` is the
+ * only bucket that is a debt, and the only one the credit limit measures.
+ */
+export interface CompanyReceivable {
+  company: { id: number; code: string; name: string; accounts_email: string | null }
+  /** Frozen ticket charges with no invoice claiming them. */
+  unbilled: Money
+  unbilled_ticket_count: number
+  /** Raised but not served — still ours to restate. */
+  draft: Money
+  /** Served and unpaid. */
+  awaiting: Money
+  /** The part of `awaiting` past its due date. */
+  overdue: Money
+  received: Money
+  /** unbilled + draft + awaiting. */
+  total_due: Money
+  ageing: { not_due: Money; d1_30: Money; d31_60: Money; d60_plus: Money }
+  oldest_overdue_due_at: string | null
+  invoice_count: number
+  open_invoice_count: number
+  credit_limit: Money
+  headroom: Money
+  over_limit: boolean
+}
+
+export interface ReceivablesReport {
+  as_of: string
+  companies: CompanyReceivable[]
+  totals: {
+    unbilled_ticket_count: number
+    unbilled: Money
+    draft: Money
+    awaiting: Money
+    overdue: Money
+    received: Money
+    total_due: Money
+  }
+}
+
+export interface InvoicePreview {
+  company_id: number
+  period_start: string
+  period_end: string
+  totals: { total_paise: number }
+  ticket_count: number
+  line_count: number
 }
 
 export interface TechnicianPayout {
@@ -711,7 +890,7 @@ export interface SettlementLine {
 export interface SettlementSplitBucket {
   key: string
   label: string
-  /** -1 for the buckets that reduce the total, such as the vendor royalty. */
+  /** -1 for the buckets that reduce the total, such as the company royalty. */
   sign: number
   amount: Money
   /** The bucket's contribution to the total, sign already applied. */
@@ -741,17 +920,38 @@ export interface SettlementDetail {
   tickets: SettlementTicketGroup[]
 }
 
-export interface VendorInvoiceDetail extends SettlementDetail {
+export interface CompanyInvoiceDetail extends SettlementDetail {
   invoice_no: string
-  vendor: { id: number; code: string; name: string } | null
+  company: { id: number; code: string; name: string } | null
   cycle_date: string | null
   due_at: string | null
   totals: { total: Money; paid: Money; balance: Money; line_count: number }
 }
 
+export interface PayoutMethodOption {
+  value: string
+  label: string
+  /** What the reference should hold — UTR, UPI ID, or voucher number. */
+  reference_label: string
+}
+
 export interface TechnicianPayoutDetail extends SettlementDetail {
   payout_no: string
   technician: { id: number; code: string; name: string } | null
+  /**
+   * How the money left our hands. A technician is paid by us out of the
+   * margin, never by the company, so this is the payment's only trace.
+   */
+  payment: {
+    method: string | null
+    method_label: string | null
+    reference: string | null
+    paid_at: string | null
+    approved_at: string | null
+  }
+  can_approve: boolean
+  can_pay: boolean
+  payment_methods: PayoutMethodOption[]
 }
 
 export interface OptionItem {
@@ -762,18 +962,18 @@ export interface OptionItem {
 }
 
 export interface TicketOptions {
-  vendors: OptionItem[]
+  companies: OptionItem[]
   service_centers: OptionItem[]
   brands: OptionItem[]
   product_categories: OptionItem[]
   job_types: OptionItem[]
-  symptoms: OptionItem[]
+  symptoms: Array<OptionItem & { requires_video_proof?: boolean }>
   districts: OptionItem[]
   technicians: Array<{ id: number; code: string; name: string; phone: string; service_center_id: number }>
   /** How a job can end. `is_billable: false` closes it with an empty ledger. */
   resolutions: Array<OptionItem & { requires_spare: boolean; is_billable: boolean }>
   /** Why the clock stopped. Only `pauses_sla: true` actually stops it. */
-  hold_reasons: Array<OptionItem & { pauses_sla: boolean; requires_vendor_notice: boolean }>
+  hold_reasons: Array<OptionItem & { pauses_sla: boolean; requires_company_notice: boolean }>
   warranty_scopes: Array<{ code: string; name: string }>
   priorities: Array<{ code: string; name: string }>
   requirements?: Record<string, unknown>
@@ -787,8 +987,17 @@ export interface CustomerData {
   email?: string
   address_line1?: string
   address_line2?: string
+  landmark?: string
   city?: string
+  /** Free text as typed at intake, when nobody matched it to a master row. */
+  district?: string
   district_id?: number
+  /**
+   * The matched master district, contained on the single-ticket read only.
+   * `_ref` because `customers` has its own `district` string column and Cake
+   * would otherwise overwrite one with the other — see CustomersTable.
+   */
+  district_ref?: OptionItem
   pincode?: string
 }
 
@@ -802,35 +1011,86 @@ export interface TicketEventItem {
   occurred_at: string
 }
 
+/**
+ * One part fitted on a job, as the ticket carries it.
+ *
+ * Money stays in paise the way the row stores it; the two clause dates
+ * travel with the line because they are what the desk is answerable for
+ * — `defective_return_due_at` is clause 9's deadline for sending the old
+ * unit back, `billing_due_at` clause 10's cutoff after which the part is
+ * treated as billed to us.
+ */
+export interface TicketSpareItem {
+  id: number
+  spare_part_id: number
+  quantity: number
+  serial_no: string | null
+  unit_cost_paise: number
+  margin_pct: string
+  unit_price_paise: number
+  line_total_paise: number
+  /** `customer` out of warranty, `company` under it. */
+  charged_to: string
+  is_defective_return: boolean
+  defective_return_due_at: string | null
+  defective_returned_at: string | null
+  received_at: string | null
+  billing_due_at: string | null
+  notes: string | null
+  created: string
+  spare_part?: { id: number; part_no: string; name: string; is_serialized?: boolean }
+}
+
 export interface Ticket {
   id: number
   ticket_no: string
-  vendor_id: number
-  vendor_ticket_ref: string | null
+  company_id: number
+  company_ticket_ref: string | null
   service_center_id: number
   customer_id: number
   model_no: string | null
   serial_no: string | null
   size_inch: string | null
+  purchase_date: string | null
   warranty_scope: string
   job_type_id: number
   status: string
   priority: string
+  /** The complaint in the customer's words. */
   reported_issue: string | null
+  /** What the technician found, written at closure. */
+  diagnosis: string | null
+  closure_notes: string | null
+  cancellation_reason: string | null
+  /** A second visit for the same fault inside the repeat window. */
+  is_repeat?: boolean
+  reopened_count?: number
   assigned_technician_id: number | null
   assigned_at: string | null
   received_at: string
+  first_contact_at: string | null
   contact_due_at: string | null
   visit_due_at: string | null
   close_due_at: string | null
+  visited_at: string | null
+  closed_at: string | null
+  checkin_at: string | null
+  closure_otp_verified_at: string | null
   customer?: CustomerData
-  vendor?: OptionItem
+  company?: OptionItem
   service_center?: OptionItem
   job_type?: OptionItem
   assigned_technician?: { id: number; code: string; name: string; phone: string } | null
   brand?: OptionItem
+  brand_id?: number | null
   product_category?: OptionItem
+  product_category_id?: number | null
+  /** The catalogued fault picked at intake, beside the free-text complaint. */
+  symptom?: OptionItem
+  symptom_id?: number | null
+  resolution?: OptionItem & { is_billable?: boolean }
   ticket_events?: TicketEventItem[]
+  ticket_spares?: TicketSpareItem[]
 }
 
 export interface RatePreviewLine {
@@ -864,6 +1124,10 @@ export interface TicketLedger {
   lines: TicketChargeLine[]
   totals: Record<string, Money & { line_count?: number }>
   is_frozen: boolean
+  /** Why the ledger is locked, or null while the ticket is still open.
+   *  Without this a refused part or a refused closure could only report
+   *  that it was refused, never that a closure an hour ago was the cause. */
+  freeze: { frozen_at: string; actor: string | null; reason: string | null } | null
 }
 
 export interface TicketAttachment {
@@ -881,7 +1145,7 @@ export interface TicketAttachment {
 export interface TicketComment {
   id: number
   body: string
-  /** internal | vendor | customer — who the note was written for. */
+  /** internal | company | customer — who the note was written for. */
   visibility: string
   author_id: number | null
   author_name: string
@@ -910,8 +1174,8 @@ export interface RatePreview {
 /** A catalogue row, with balances when a centre was named. */
 export interface SparePartOption {
   id: number
-  vendor_id: number
-  vendor?: { id: number; name: string }
+  company_id: number
+  company?: { id: number; name: string }
   part_no: string
   name: string
   description: string | null
@@ -936,8 +1200,8 @@ export interface SpareStockRow {
   spare_part_id: number
   part_no: string
   part_name: string
-  vendor_id: number
-  vendor_name: string | null
+  company_id: number
+  company_name: string | null
   service_center_id: number
   service_center_name: string
   on_hand: number
@@ -978,7 +1242,7 @@ export interface SpareMovement {
   technician_id: number | null
   ticket_id: number | null
   /** received | issued | consumed | returned_good | returned_defective |
-   *  sent_to_vendor | written_off | adjustment */
+   *  sent_to_company | written_off | adjustment */
   movement_type: string
   /** Signed: positive adds to the location named on the row. */
   quantity: number
@@ -1002,7 +1266,7 @@ export interface SpareAgeingLot {
   spare_part_id: number
   part_no: string
   part_name: string
-  vendor_id: number
+  company_id: number
   service_center_id: number
   service_center_name: string
   quantity: number
@@ -1032,7 +1296,7 @@ export interface DefectiveReturnDue {
   serial_no: string | null
   defective_return_due_at: string | null
   ticket_no: string
-  vendor_id: number
+  company_id: number
   part_no: string
   part_name: string
 }
@@ -1052,7 +1316,23 @@ export interface DashboardStats {
   closed_today: number
   pending_spares: number
   by_status: Record<string, number>
-  by_vendor: Array<{ vendor_id: number; vendor_name: string; count: number }>
+  /**
+   * Per-company ticket counts, split into the five reporting buckets and
+   * ordered with the most open work first. `open` is `count` minus the two
+   * terminal buckets, so the columns always add up to the total beside them.
+   */
+  by_company: Array<{
+    company_id: number
+    company_name: string
+    company_code: string
+    count: number
+    open: number
+    pending: number
+    in_progress: number
+    on_hold: number
+    closed: number
+    cancelled: number
+  }>
   recent_events: Array<{
     id: number
     ticket_id: number
