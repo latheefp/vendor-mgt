@@ -10,7 +10,12 @@ use Migrations\BaseSeed;
  * as the reference implementation for onboarding company #2: nothing in
  * this file is code the next company would need changed, only data.
  *
- *   bin/cake seeds run DianoraSeed  (run MasterListSeed first)
+ * The shared baseline it overrides (resolutions, hold reasons, product
+ * categories, job types) is seeded by migrations
+ * `SeedStandardMasterData` / `SeedOperationalMasterLists`, which already
+ * run on every container boot — no separate seed needs to run first.
+ *
+ *   bin/cake seeds run DianoraSeed
  */
 class DianoraSeed extends BaseSeed
 {

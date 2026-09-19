@@ -12,7 +12,11 @@ use Migrations\BaseSeed;
  * demo credentials with a shared, guessable password — the flag is what
  * stops one quietly surviving into production.
  *
- *   bin/cake seeds run UserSeed   (after MasterListSeed)
+ * Relies on the desk/technician/accounts roles from the
+ * `SeedOperationalMasterLists` migration, which already runs on every
+ * container boot.
+ *
+ *   bin/cake seeds run UserSeed
  */
 class UserSeed extends BaseSeed
 {
