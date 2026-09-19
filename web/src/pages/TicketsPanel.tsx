@@ -132,15 +132,24 @@ export function TicketsPanel() {
     try {
       const opts = await api.ticketOptions(companyId)
       setOptions(opts)
-      if (!companyId && opts.companies.length > 0 && opts.service_centers.length > 0 && opts.job_types.length > 0) {
+      // Each field defaults off its own list. These used to be gated behind
+      // one combined check ("only if companies AND service centers AND job
+      // types all came back"), so an environment with, say, no job types
+      // configured yet left company_id and district_id blank too — despite
+      // both having real options — and intake failed with a company error
+      // that looked unrelated to what the operator saw on screen.
+      if (!companyId) {
         setFormData((prev) => ({
           ...prev,
-          company_id: String(opts.companies[0].id),
-          service_center_id: defaultServiceCenterId(opts),
-          job_type_id: String(opts.job_types[0].id),
-          brand_id: opts.brands.length > 0 ? String(opts.brands[0].id) : '',
-          product_category_id: opts.product_categories.length > 0 ? String(opts.product_categories[0].id) : '',
-          customer: { ...prev.customer, district_id: defaultDistrictId(opts) },
+          company_id: opts.companies.length > 0 ? String(opts.companies[0].id) : prev.company_id,
+          service_center_id: opts.service_centers.length > 0 ? defaultServiceCenterId(opts) : prev.service_center_id,
+          job_type_id: opts.job_types.length > 0 ? String(opts.job_types[0].id) : prev.job_type_id,
+          brand_id: opts.brands.length > 0 ? String(opts.brands[0].id) : prev.brand_id,
+          product_category_id: opts.product_categories.length > 0 ? String(opts.product_categories[0].id) : prev.product_category_id,
+          customer: {
+            ...prev.customer,
+            district_id: opts.districts.length > 0 ? defaultDistrictId(opts) : prev.customer.district_id,
+          },
         }))
       }
     } catch (err) {
@@ -211,33 +220,33 @@ export function TicketsPanel() {
   }
 
   const resetForm = () => {
-    if (options && options.companies.length > 0 && options.service_centers.length > 0 && options.job_types.length > 0) {
-      setFormData({
-        company_id: String(options.companies[0].id),
-        service_center_id: defaultServiceCenterId(options),
-        job_type_id: String(options.job_types[0].id),
-        warranty_scope: 'in_warranty',
-        brand_id: options.brands.length > 0 ? String(options.brands[0].id) : '',
-        product_category_id: options.product_categories.length > 0 ? String(options.product_categories[0].id) : '',
-        model_no: '',
-        serial_no: '',
-        size_inch: '',
-        purchase_date: '',
-        symptom_id: '',
-        reported_issue: '',
-        priority: 'normal',
-        company_ticket_ref: '',
-        customer: {
-          name: '',
-          phone: '',
-          alt_phone: '',
-          address_line1: '',
-          city: '',
-          district_id: defaultDistrictId(options),
-          pincode: '',
-        },
-      })
-    }
+    if (!options) return
+
+    setFormData({
+      company_id: options.companies.length > 0 ? String(options.companies[0].id) : '',
+      service_center_id: options.service_centers.length > 0 ? defaultServiceCenterId(options) : '',
+      job_type_id: options.job_types.length > 0 ? String(options.job_types[0].id) : '',
+      warranty_scope: 'in_warranty',
+      brand_id: options.brands.length > 0 ? String(options.brands[0].id) : '',
+      product_category_id: options.product_categories.length > 0 ? String(options.product_categories[0].id) : '',
+      model_no: '',
+      serial_no: '',
+      size_inch: '',
+      purchase_date: '',
+      symptom_id: '',
+      reported_issue: '',
+      priority: 'normal',
+      company_ticket_ref: '',
+      customer: {
+        name: '',
+        phone: '',
+        alt_phone: '',
+        address_line1: '',
+        city: '',
+        district_id: options.districts.length > 0 ? defaultDistrictId(options) : '',
+        pincode: '',
+      },
+    })
   }
 
   const startEditTicket = (ticket: Ticket) => {
@@ -871,6 +880,7 @@ export function TicketsPanel() {
                     customer: { ...prev.customer, district_id: e.target.value },
                   }))
                 }
+                required
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
                 <option value="">Select District</option>
@@ -931,8 +941,10 @@ export function TicketsPanel() {
               <select
                 value={formData.company_id}
                 onChange={(e) => setFormData((prev) => ({ ...prev, company_id: e.target.value }))}
+                required
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
+                <option value="">Select Company</option>
                 {options?.companies.map((company) => (
                   <option key={company.id} value={company.id}>
                     {company.name} ({company.code})
@@ -950,8 +962,10 @@ export function TicketsPanel() {
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, service_center_id: e.target.value }))
                 }
+                required
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
+                <option value="">Select Service Center</option>
                 {options?.service_centers.map((sc) => (
                   <option key={sc.id} value={sc.id}>
                     {sc.name}
@@ -967,8 +981,10 @@ export function TicketsPanel() {
               <select
                 value={formData.job_type_id}
                 onChange={(e) => setFormData((prev) => ({ ...prev, job_type_id: e.target.value }))}
+                required
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
+                <option value="">Select Job Type</option>
                 {options?.job_types.map((jt) => (
                   <option key={jt.id} value={jt.id}>
                     {jt.name}
