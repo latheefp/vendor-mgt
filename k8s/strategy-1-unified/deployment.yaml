@@ -45,7 +45,7 @@ spec:
         - name: APP_DEFAULT_TIMEZONE
           value: "Asia/Kolkata"
         - name: APP_FULL_BASE_URL
-          value: "https://vendor-mgt.egrand.in"
+          value: "https://help.egrand.in"
         - name: DB_PORT
           value: "3306"
         - name: DB_NAME
