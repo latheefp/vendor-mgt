@@ -10,9 +10,19 @@ import type {
   StateItem,
   OptionItem,
   TechnicianItem,
+  AppSettingsItem,
+  AppSettingsMeta,
 } from '../lib/api'
 
-type SettingsTab = 'users' | 'technicians' | 'roles' | 'companies' | 'rate-cards' | 'products' | 'master-lists'
+type SettingsTab =
+  | 'users'
+  | 'technicians'
+  | 'roles'
+  | 'companies'
+  | 'rate-cards'
+  | 'products'
+  | 'master-lists'
+  | 'configurations'
 
 const SETTINGS_TAB_META: Record<SettingsTab, { title: string; description: string }> = {
   users: {
@@ -43,6 +53,10 @@ const SETTINGS_TAB_META: Record<SettingsTab, { title: string; description: strin
     title: 'Master Lists',
     description: 'Manage shared reference lists used across the system.',
   },
+  configurations: {
+    title: 'Configurations',
+    description: 'Portal-wide timezone and date/time display conventions.',
+  },
 }
 
 export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsTab }) {
@@ -72,6 +86,7 @@ export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsT
       {activeTab === 'rate-cards' && <RateCardsTab />}
       {activeTab === 'products' && <ProductsTab />}
       {activeTab === 'master-lists' && <MasterListsTab />}
+      {activeTab === 'configurations' && <ConfigurationsTab />}
     </div>
   )
 }
@@ -3759,6 +3774,218 @@ function MasterListsTab() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ==================================================================== */
+/* 4. CONFIGURATIONS TAB (timezone & date/time format)                  */
+/* ==================================================================== */
+const DATE_FORMAT_LABELS: Record<string, string> = {
+  'DD/MM/YYYY': 'DD/MM/YYYY (31/12/2026)',
+  'MM/DD/YYYY': 'MM/DD/YYYY (12/31/2026)',
+  'YYYY-MM-DD': 'YYYY-MM-DD (2026-12-31)',
+}
+
+const TIME_FORMAT_LABELS: Record<string, string> = {
+  '12h': '12-hour (2:30 PM)',
+  '24h': '24-hour (14:30)',
+}
+
+/**
+ * Renders "now" the way the chosen combination would render every
+ * timestamp in the desk, so a change here previews before it is saved
+ * rather than only being checkable afterwards against a live ticket.
+ */
+function formatPreview(timezone: string, dateFormat: string, timeFormat: string): string {
+  const now = new Date()
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: timeFormat === '12h',
+  }).formatToParts(now)
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  const day = get('day')
+  const month = get('month')
+  const year = get('year')
+  const hour = get('hour')
+  const minute = get('minute')
+  const dayPeriod = get('dayPeriod')
+
+  const datePart =
+    dateFormat === 'MM/DD/YYYY'
+      ? `${month}/${day}/${year}`
+      : dateFormat === 'YYYY-MM-DD'
+        ? `${year}-${month}-${day}`
+        : `${day}/${month}/${year}`
+
+  const timePart = timeFormat === '12h' ? `${hour}:${minute} ${dayPeriod}` : `${hour}:${minute}`
+
+  return `${datePart}, ${timePart}`
+}
+
+function ConfigurationsTab() {
+  const [settings, setSettings] = useState<AppSettingsItem | null>(null)
+  const [meta, setMeta] = useState<AppSettingsMeta>({ timezones: [], date_formats: [], time_formats: [] })
+  const [loading, setLoading] = useState(true)
+  const [timezone, setTimezone] = useState('')
+  const [timezoneFilter, setTimezoneFilter] = useState('')
+  const [dateFormat, setDateFormat] = useState('')
+  const [timeFormat, setTimeFormat] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [savedMsg, setSavedMsg] = useState('')
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const { data, meta } = await api.getAppSettings()
+      setSettings(data)
+      setMeta(meta)
+      setTimezone(data.timezone)
+      setDateFormat(data.date_format)
+      setTimeFormat(data.time_format)
+    } catch (e) {
+      console.error('Failed to load app settings', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadData()
+  }, [])
+
+  const filteredTimezones =
+    timezoneFilter.trim() === ''
+      ? meta.timezones
+      : meta.timezones.filter((tz) => tz.toLowerCase().includes(timezoneFilter.trim().toLowerCase()))
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setErrorMsg('')
+    setSavedMsg('')
+
+    try {
+      const updated = await api.updateAppSettings({
+        timezone,
+        date_format: dateFormat,
+        time_format: timeFormat,
+      })
+      setSettings(updated)
+      setSavedMsg('Configuration saved.')
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save configuration')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="py-8 text-center text-sm text-slate-500">Loading configuration…</div>
+  }
+
+  const dirty =
+    !!settings &&
+    (timezone !== settings.timezone || dateFormat !== settings.date_format || timeFormat !== settings.time_format)
+
+  return (
+    <div className="max-w-xl space-y-4">
+      <form
+        onSubmit={handleSave}
+        className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900"
+      >
+        {errorMsg && (
+          <div className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+            {errorMsg}
+          </div>
+        )}
+        {savedMsg && !dirty && (
+          <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+            {savedMsg}
+          </div>
+        )}
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Timezone</label>
+          <input
+            type="text"
+            placeholder="Filter, e.g. Kolkata"
+            value={timezoneFilter}
+            onChange={(e) => setTimezoneFilter(e.target.value)}
+            className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+          />
+          <select
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            size={6}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+          >
+            {!filteredTimezones.includes(timezone) && timezone && (
+              <option value={timezone}>{timezone}</option>
+            )}
+            {filteredTimezones.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Date format</label>
+            <select
+              value={dateFormat}
+              onChange={(e) => setDateFormat(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            >
+              {meta.date_formats.map((fmt) => (
+                <option key={fmt} value={fmt}>
+                  {DATE_FORMAT_LABELS[fmt] ?? fmt}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Time format</label>
+            <select
+              value={timeFormat}
+              onChange={(e) => setTimeFormat(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            >
+              {meta.time_formats.map((fmt) => (
+                <option key={fmt} value={fmt}>
+                  {TIME_FORMAT_LABELS[fmt] ?? fmt}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {timezone && dateFormat && timeFormat && (
+          <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
+            Preview: <span className="font-semibold text-slate-900 dark:text-white">{formatPreview(timezone, dateFormat, timeFormat)}</span>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <button
+            type="submit"
+            disabled={saving || !dirty}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save Configuration'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

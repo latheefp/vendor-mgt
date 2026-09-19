@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
+import { AppFooter } from '../components/AppFooter'
 import { DashboardPanel } from './DashboardPanel'
 import { RatePreviewPanel } from './RatePreviewPanel'
 import { TicketsPanel } from './TicketsPanel'
@@ -9,7 +10,15 @@ import { SparesPanel } from './SparesPanel'
 import { SettingsPanel } from './SettingsPanel'
 
 type Section = 'dashboard' | 'tickets' | 'spares' | 'invoicing' | 'receivables' | 'pricing' | 'settings'
-type SettingsTab = 'users' | 'technicians' | 'roles' | 'companies' | 'rate-cards' | 'products' | 'master-lists'
+type SettingsTab =
+  | 'users'
+  | 'technicians'
+  | 'roles'
+  | 'companies'
+  | 'rate-cards'
+  | 'products'
+  | 'master-lists'
+  | 'configurations'
 
 export function DeskShell() {
   const { user, logout } = useAuth()
@@ -296,6 +305,18 @@ export function DeskShell() {
                   <span className="text-sm">🗂️</span>
                   <span>Master Lists</span>
                 </button>
+
+                <button
+                  onClick={() => handleNavigate('settings', 'configurations')}
+                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                    section === 'settings' && settingsTab === 'configurations'
+                      ? 'bg-slate-800 text-brand-400 font-semibold'
+                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-sm">🌐</span>
+                  <span>Configurations</span>
+                </button>
               </div>
             )}
           </div>
@@ -387,6 +408,8 @@ export function DeskShell() {
             <RatePreviewPanel />
           )}
         </main>
+
+        <AppFooter />
       </div>
     </div>
   )

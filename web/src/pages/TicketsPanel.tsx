@@ -1074,6 +1074,26 @@ export function TicketsPanel() {
 
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                Principal's Ticket Ref
+              </label>
+              <input
+                type="text"
+                value={formData.company_ticket_ref}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, company_ticket_ref: e.target.value }))
+                }
+                placeholder="e.g. DN0409260006"
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:bg-slate-800 dark:text-white ${
+                  fieldErrors['company_ticket_ref'] ? 'border-rose-500 bg-rose-50/50' : 'border-slate-300 dark:border-slate-700'
+                }`}
+              />
+              {fieldErrors['company_ticket_ref'] && (
+                <p className="mt-1 text-xs text-rose-600">{fieldErrors['company_ticket_ref'].join(', ')}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                 Warranty Scope *
               </label>
               <select
@@ -1307,7 +1327,7 @@ export function TicketsPanel() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search ticket #, customer name, phone, serial..."
+                placeholder="Search ticket #, principal's ref, customer name, phone, serial..."
                 className="w-full max-w-md rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
               <button
@@ -1414,6 +1434,11 @@ export function TicketsPanel() {
                         <div className="text-xs font-normal text-slate-500">
                           {t.company?.name} · {t.job_type?.name}
                         </div>
+                        {t.company_ticket_ref && (
+                          <div className="text-xs font-normal text-slate-400">
+                            Ref: {t.company_ticket_ref}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900 dark:text-white">

@@ -192,6 +192,10 @@ return function (RouteBuilder $routes): void {
         $builder->put('/master-lists/{list}/{id}', ['controller' => 'MasterLists', 'action' => 'editItem', 'prefix' => 'Api']);
         $builder->delete('/master-lists/{list}/{id}', ['controller' => 'MasterLists', 'action' => 'toggleItem', 'prefix' => 'Api']);
 
+        // ---- portal-wide configuration (timezone, date/time format) ----
+        $builder->get('/app-settings', ['controller' => 'AppSettings', 'action' => 'view', 'prefix' => 'Api']);
+        $builder->put('/app-settings', ['controller' => 'AppSettings', 'action' => 'edit', 'prefix' => 'Api']);
+
         // Clause 4: live exposure against the agreed credit limit.
         $builder->get('/companies/{id}/credit-exposure', ['controller' => 'Settlement', 'action' => 'creditExposure', 'prefix' => 'Api']);
 

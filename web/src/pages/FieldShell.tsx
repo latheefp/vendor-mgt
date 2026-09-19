@@ -1,4 +1,5 @@
 import { useAuth } from '../lib/auth'
+import { AppFooter } from '../components/AppFooter'
 
 /**
  * The field shell.
@@ -86,6 +87,8 @@ export function FieldShell() {
           </ol>
         </section>
       </main>
+
+      <AppFooter />
     </div>
   )
 }

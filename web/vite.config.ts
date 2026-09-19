@@ -2,6 +2,15 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import { execSync } from 'node:child_process'
+
+function commitHash(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim()
+  } catch {
+    return 'unknown'
+  }
+}
 
 /**
  * Two supported dev modes:
@@ -20,6 +29,10 @@ const proxyTarget = process.env.VITE_PROXY_TARGET ?? (inDocker ? 'http://api-web
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+
+  define: {
+    __APP_COMMIT__: JSON.stringify(commitHash()),
+  },
 
   resolve: {
     alias: {

@@ -702,6 +702,11 @@ export const api = {
     request<Record<string, unknown>>(`/master-lists/${list}/${id}`, { method: 'PUT', body: payload }),
   toggleMasterListItem: (list: string, id: number) =>
     request<Record<string, unknown>>(`/master-lists/${list}/${id}`, { method: 'DELETE' }),
+
+  // ---- App Settings (portal-wide timezone & date/time format) ----
+  getAppSettings: () => requestEnvelope<AppSettingsItem, AppSettingsMeta>('/app-settings'),
+  updateAppSettings: (payload: Record<string, unknown>) =>
+    request<AppSettingsItem>('/app-settings', { method: 'PUT', body: payload }),
 }
 
 export interface UserItem {
@@ -1364,4 +1369,19 @@ export interface DashboardStats {
     description: string
     occurred_at: string
   }>
+}
+
+export interface AppSettingsItem {
+  id: number
+  logo_base64: string | null
+  favicon_base64: string | null
+  timezone: string
+  date_format: string
+  time_format: string
+}
+
+export interface AppSettingsMeta {
+  timezones: string[]
+  date_formats: string[]
+  time_formats: string[]
 }
