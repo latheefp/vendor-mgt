@@ -16,6 +16,7 @@ export function DeskShell() {
   const [section, setSection] = useState<Section>('dashboard')
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('users')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [settingsSubmenuOpen, setSettingsSubmenuOpen] = useState(true)
 
   const handleNavigate = (targetSection: Section, tab?: string) => {
@@ -23,15 +24,25 @@ export function DeskShell() {
     if (tab && targetSection === 'settings') {
       setSettingsTab(tab as SettingsTab)
     }
+    setMobileNavOpen(false)
   }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
-      {/* LEFT SIDEBAR NAVIGATION */}
+      {/* Backdrop for the mobile nav drawer */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* LEFT SIDEBAR NAVIGATION
+          Off-canvas drawer below md; a normal collapsible column at md+. */}
       <aside
-        className={`flex flex-col border-r border-slate-200 bg-slate-900 text-slate-300 transition-all duration-300 dark:border-slate-800 dark:bg-slate-900 ${
-          sidebarCollapsed ? 'w-20' : 'w-64'
-        }`}
+        className={`fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col border-r border-slate-200 bg-slate-900 text-slate-300 transition-transform duration-300 dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:translate-x-0 md:transition-all ${
+          mobileNavOpen ? 'translate-x-0' : ''
+        } ${sidebarCollapsed ? 'md:w-20' : 'md:w-64'}`}
       >
         {/* Sidebar Header / Brand Logo */}
         <div className="flex h-16 items-center justify-between border-b border-slate-800 px-4">
@@ -47,10 +58,17 @@ export function DeskShell() {
           </div>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
+            className="hidden h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white md:flex"
             title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
             {sidebarCollapsed ? '▶' : '◀'}
+          </button>
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white md:hidden"
+            title="Close menu"
+          >
+            ✕
           </button>
         </div>
 
@@ -64,7 +82,7 @@ export function DeskShell() {
               </div>
             )}
             <button
-              onClick={() => setSection('dashboard')}
+              onClick={() => handleNavigate('dashboard')}
               className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                 section === 'dashboard'
                   ? 'bg-brand-600 text-white shadow-sm'
@@ -86,7 +104,7 @@ export function DeskShell() {
             )}
             <div className="space-y-1">
               <button
-                onClick={() => setSection('tickets')}
+                onClick={() => handleNavigate('tickets')}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   section === 'tickets'
                     ? 'bg-brand-600 text-white shadow-sm'
@@ -99,7 +117,7 @@ export function DeskShell() {
               </button>
 
               <button
-                onClick={() => setSection('spares')}
+                onClick={() => handleNavigate('spares')}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   section === 'spares'
                     ? 'bg-brand-600 text-white shadow-sm'
@@ -122,7 +140,7 @@ export function DeskShell() {
             )}
             <div className="space-y-1">
               <button
-                onClick={() => setSection('invoicing')}
+                onClick={() => handleNavigate('invoicing')}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   section === 'invoicing'
                     ? 'bg-brand-600 text-white shadow-sm'
@@ -135,7 +153,7 @@ export function DeskShell() {
               </button>
 
               <button
-                onClick={() => setSection('receivables')}
+                onClick={() => handleNavigate('receivables')}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   section === 'receivables'
                     ? 'bg-brand-600 text-white shadow-sm'
@@ -148,7 +166,7 @@ export function DeskShell() {
               </button>
 
               <button
-                onClick={() => setSection('pricing')}
+                onClick={() => handleNavigate('pricing')}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   section === 'pricing'
                     ? 'bg-brand-600 text-white shadow-sm'
@@ -196,10 +214,7 @@ export function DeskShell() {
             {!sidebarCollapsed && settingsSubmenuOpen && (
               <div className="ml-4 mt-1.5 border-l border-slate-800 pl-3 space-y-1">
                 <button
-                  onClick={() => {
-                    setSection('settings')
-                    setSettingsTab('users')
-                  }}
+                  onClick={() => handleNavigate('settings', 'users')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'users'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
@@ -211,10 +226,7 @@ export function DeskShell() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setSection('settings')
-                    setSettingsTab('technicians')
-                  }}
+                  onClick={() => handleNavigate('settings', 'technicians')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'technicians'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
@@ -226,10 +238,7 @@ export function DeskShell() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setSection('settings')
-                    setSettingsTab('roles')
-                  }}
+                  onClick={() => handleNavigate('settings', 'roles')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'roles'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
@@ -241,10 +250,7 @@ export function DeskShell() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setSection('settings')
-                    setSettingsTab('companies')
-                  }}
+                  onClick={() => handleNavigate('settings', 'companies')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'companies'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
@@ -256,10 +262,7 @@ export function DeskShell() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setSection('settings')
-                    setSettingsTab('rate-cards')
-                  }}
+                  onClick={() => handleNavigate('settings', 'rate-cards')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'rate-cards'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
@@ -271,10 +274,7 @@ export function DeskShell() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setSection('settings')
-                    setSettingsTab('products')
-                  }}
+                  onClick={() => handleNavigate('settings', 'products')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'products'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
@@ -286,10 +286,7 @@ export function DeskShell() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setSection('settings')
-                    setSettingsTab('master-lists')
-                  }}
+                  onClick={() => handleNavigate('settings', 'master-lists')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'master-lists'
                       ? 'bg-slate-800 text-brand-400 font-semibold'
@@ -335,13 +332,20 @@ export function DeskShell() {
       {/* RIGHT MAIN WORKSPACE */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Header Bar */}
-        <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">
+        <header className="flex h-14 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:h-16 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 md:hidden"
+              title="Open menu"
+            >
+              ☰
+            </button>
+            <span className="hidden shrink-0 text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400 sm:inline">
               Grand VendorService
             </span>
-            <span className="text-slate-300 dark:text-slate-700">/</span>
-            <span className="text-sm font-semibold capitalize text-slate-900 dark:text-white">
+            <span className="hidden text-slate-300 dark:text-slate-700 sm:inline">/</span>
+            <span className="truncate text-sm font-semibold capitalize text-slate-900 dark:text-white">
               {section === 'dashboard'
                 ? 'Executive Overview'
                 : section === 'settings'
@@ -350,15 +354,15 @@ export function DeskShell() {
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden text-right sm:block">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+            <div className="hidden text-right lg:block">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
             <button
               onClick={() => void logout()}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3"
             >
               Sign out
             </button>
@@ -366,7 +370,7 @@ export function DeskShell() {
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto bg-slate-100/60 p-6 dark:bg-slate-950">
+        <main className="flex-1 overflow-y-auto bg-slate-100/60 p-3 dark:bg-slate-950 sm:p-6">
           {section === 'dashboard' ? (
             <DashboardPanel onNavigate={handleNavigate} />
           ) : section === 'tickets' ? (

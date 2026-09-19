@@ -371,7 +371,8 @@ export function InvoicingPanel() {
                 No company invoice runs generated yet. Click <strong>Generate New Company Invoice Run</strong> above.
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[42rem] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <tr>
                     <th className="px-4 py-3">Invoice #</th>
@@ -413,6 +414,7 @@ export function InvoicingPanel() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>
@@ -447,7 +449,8 @@ export function InvoicingPanel() {
                 No technician payout runs generated yet. Click <strong>Generate Technician Payout Run</strong> above.
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[38rem] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <tr>
                     <th className="px-4 py-3">Payout #</th>
@@ -485,6 +488,7 @@ export function InvoicingPanel() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

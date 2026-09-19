@@ -289,13 +289,13 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {stats?.recent_events && stats.recent_events.length > 0 ? (
             stats.recent_events.map((ev) => (
-              <div key={ev.id} className="flex items-center justify-between py-3">
-                <div className="flex items-center gap-3">
-                  <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-mono font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <div key={ev.id} className="flex items-center justify-between gap-3 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-mono font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                     #{ev.ticket_no}
                   </span>
-                  <div>
-                    <p className="text-xs font-medium text-slate-900 dark:text-white">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-slate-900 dark:text-white">
                       {ev.description || ev.event_type}
                     </p>
                     <span className="text-[10px] text-slate-500 uppercase tracking-wider">
@@ -303,7 +303,7 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
                     </span>
                   </div>
                 </div>
-                <span className="text-xs text-slate-400">
+                <span className="shrink-0 text-xs text-slate-400">
                   {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>

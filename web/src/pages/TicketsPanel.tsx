@@ -1277,7 +1277,8 @@ export function TicketsPanel() {
                 )}
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[64rem] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <tr>
                     <th className="px-4 py-3">Ticket #</th>
@@ -1381,6 +1382,7 @@ export function TicketsPanel() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

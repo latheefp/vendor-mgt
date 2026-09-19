@@ -189,7 +189,8 @@ export function RatePreviewPanel() {
               </span>
             </div>
 
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[28rem] text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="pb-2 font-medium">Ledger</th>
@@ -217,6 +218,7 @@ export function RatePreviewPanel() {
                 ))}
               </tbody>
             </table>
+            </div>
 
             <dl className="mt-5 space-y-1.5 border-t border-slate-200 pt-4 text-sm dark:border-slate-800">
               {(
