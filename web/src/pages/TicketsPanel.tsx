@@ -26,6 +26,92 @@ function today(): string {
   ).padStart(2, '0')}`
 }
 
+type OptionLike = { id: number; name: string }
+
+/** Lowercase, letters-and-digits-only key, so "Complaint Type" and "Service Center" match regardless of spacing/case. */
+function normalizeKey(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/**
+ * Vendor ticket printouts (Dianora and similar principal portals) paste as
+ * a run of rows, each a tab-separated repeat of `label, value, label,
+ * value…` — a straight copy of an HTML table with two label/value columns
+ * per row. The header row is the one exception: its third cell is a column
+ * heading, not a label, and is silently dropped since it never gets a value
+ * to pair with.
+ */
+function parsePastedTicketFields(text: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.replace(/\r$/, '')
+    if (!line.trim()) continue
+    const tokens = (line.includes('\t') ? line.split('\t') : line.split(/ {2,}/)).map((t) => t.trim())
+    for (let i = 0; i < tokens.length; i += 2) {
+      const key = normalizeKey(tokens[i] ?? '')
+      if (key) fields[key] = tokens[i + 1] ?? ''
+    }
+  }
+  return fields
+}
+
+/** "01/09/2026" -> "2026-09-01". Anything else returns null so a date we can't parse is left blank for the operator rather than silently guessed at. */
+function toIsoDate(value: string): string | null {
+  const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return null
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+}
+
+function toPhoneDigits(value: string): string {
+  const digits = value.replace(/\D/g, '')
+  return digits.length > 10 ? digits.slice(-10) : digits
+}
+
+/** "Engapuzha puduppadi Pincode: 673586" -> the address text with the trailing pincode clause removed, plus the pincode itself. */
+function splitTrailingPincode(value: string): { text: string; pincode: string | null } {
+  const m = value.match(/,?\s*pincode\s*:?\s*(\d{4,6})\s*$/i)
+  if (!m || m.index === undefined) return { text: value.trim(), pincode: null }
+  return { text: value.slice(0, m.index).trim(), pincode: m[1] }
+}
+
+/** "Puduppadi-673586" -> city + pincode, for the vendor's habit of folding both into one "Place" field. */
+function splitPlacePincode(value: string): { city: string; pincode: string | null } {
+  const m = value.match(/^(.*?)-(\d{6})$/)
+  if (!m) return { city: value.trim(), pincode: null }
+  return { city: m[1].trim(), pincode: m[2] }
+}
+
+/** Exact match first, then a loose contains-either-way match — master-list names rarely match a vendor's free-text wording verbatim. */
+function fuzzyNameMatch<T extends OptionLike>(list: T[] | undefined, needle: string): T | undefined {
+  if (!list || !needle.trim()) return undefined
+  const n = normalizeKey(needle)
+  return (
+    list.find((o) => normalizeKey(o.name) === n) ??
+    list.find((o) => normalizeKey(o.name).includes(n) || n.includes(normalizeKey(o.name)))
+  )
+}
+
+/** Which formData field a paste-note resolution action writes into. */
+type PasteFieldTarget = 'district' | 'service_center' | 'job_type' | 'product_category' | 'brand'
+
+/**
+ * One way to resolve a field the paste parser couldn't confidently place:
+ * either pick an existing master-list entry (every unmatched dropdown gets
+ * this), or create the vendor's exact wording as a new entry in the right
+ * table — offered only for the lists reachable from this form's own
+ * quick-add modals (district, product category, brand). Service center and
+ * job type have no such modal here (they carry rate-card/address data this
+ * popup has no business guessing at), so those only ever get a `pick`.
+ */
+type PasteAction =
+  | { kind: 'pick'; target: PasteFieldTarget; label: string; options: OptionLike[] }
+  | { kind: 'add'; target: 'district' | 'product_category' | 'brand'; label: string; value: string }
+
+type PasteNote = {
+  message: string
+  actions?: PasteAction[]
+}
+
 export function TicketsPanel() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [options, setOptions] = useState<TicketOptions | null>(null)
@@ -103,10 +189,24 @@ export function TicketsPanel() {
   const [savingCategory, setSavingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState<string | null>(null)
 
+  const [brandModalOpen, setBrandModalOpen] = useState(false)
+  const [newBrandName, setNewBrandName] = useState('')
+  const [savingBrand, setSavingBrand] = useState(false)
+  const [brandError, setBrandError] = useState<string | null>(null)
+
   const [symptomModalOpen, setSymptomModalOpen] = useState(false)
   const [newSymptomName, setNewSymptomName] = useState('')
   const [savingSymptom, setSavingSymptom] = useState(false)
   const [symptomError, setSymptomError] = useState<string | null>(null)
+
+  const [pasteModalOpen, setPasteModalOpen] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const [pasteNotes, setPasteNotes] = useState<PasteNote[]>([])
+  // Set only while a quick-add modal was opened *from* a paste-note's "+
+  // Add" button, so a successful save can clear that specific note. `null`
+  // for every other way the same modals get opened (the ordinary "+ Add
+  // new district/category" links), so those never touch pasteNotes.
+  const [pendingPasteNoteIndex, setPendingPasteNoteIndex] = useState<number | null>(null)
 
   useEffect(() => {
     void loadOptions()
@@ -180,12 +280,20 @@ export function TicketsPanel() {
     return String((match ?? opts.districts[0])?.id ?? '')
   }
 
-  const openDistrictModal = () => {
+  const openDistrictModal = (initialName = '', noteIndex: number | null = null) => {
     setNewDistrictCode('')
-    setNewDistrictName('')
+    setNewDistrictName(initialName)
     setNewDistrictStateId(options?.states[0] ? String(options.states[0].id) : '')
     setDistrictError(null)
+    setPendingPasteNoteIndex(noteIndex)
     setDistrictModalOpen(true)
+  }
+
+  const openCategoryModal = (initialName = '', noteIndex: number | null = null) => {
+    setNewCategoryName(initialName)
+    setCategoryError(null)
+    setPendingPasteNoteIndex(noteIndex)
+    setCategoryModalOpen(true)
   }
 
   const handleAddDistrict = async (e: React.FormEvent) => {
@@ -214,6 +322,10 @@ export function TicketsPanel() {
           ...prev,
           customer: { ...prev.customer, district_id: String(newId) },
         }))
+        if (pendingPasteNoteIndex !== null) {
+          setPasteNotes((prev) => prev.filter((_, i) => i !== pendingPasteNoteIndex))
+          setPendingPasteNoteIndex(null)
+        }
       }
       setDistrictModalOpen(false)
     } catch (err: unknown) {
@@ -249,6 +361,10 @@ export function TicketsPanel() {
             : prev,
         )
         setFormData((prev) => ({ ...prev, product_category_id: String(newId) }))
+        if (pendingPasteNoteIndex !== null) {
+          setPasteNotes((prev) => prev.filter((_, i) => i !== pendingPasteNoteIndex))
+          setPendingPasteNoteIndex(null)
+        }
       }
       setCategoryModalOpen(false)
       setNewCategoryName('')
@@ -256,6 +372,45 @@ export function TicketsPanel() {
       setCategoryError(err instanceof Error ? err.message : 'Failed to add category')
     } finally {
       setSavingCategory(false)
+    }
+  }
+
+  const openBrandModal = (initialName = '', noteIndex: number | null = null) => {
+    setNewBrandName(initialName)
+    setBrandError(null)
+    setPendingPasteNoteIndex(noteIndex)
+    setBrandModalOpen(true)
+  }
+
+  const handleAddBrand = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingBrand(true)
+    setBrandError(null)
+    try {
+      const created = await api.createBrand({
+        company_id: Number(formData.company_id),
+        code: newBrandName.trim().toLowerCase().replace(/\s+/g, '_'),
+        name: newBrandName.trim(),
+        is_active: true,
+      })
+      const newId = typeof created.id === 'number' ? created.id : undefined
+      if (newId) {
+        const newBrand = { id: newId, code: String(created.code ?? ''), name: String(created.name ?? '') }
+        setOptions((prev) =>
+          prev ? { ...prev, brands: [...prev.brands, newBrand].sort((a, b) => a.name.localeCompare(b.name)) } : prev,
+        )
+        setFormData((prev) => ({ ...prev, brand_id: String(newId) }))
+        if (pendingPasteNoteIndex !== null) {
+          setPasteNotes((prev) => prev.filter((_, i) => i !== pendingPasteNoteIndex))
+          setPendingPasteNoteIndex(null)
+        }
+      }
+      setBrandModalOpen(false)
+      setNewBrandName('')
+    } catch (err: unknown) {
+      setBrandError(err instanceof Error ? err.message : 'Failed to add brand')
+    } finally {
+      setSavingBrand(false)
     }
   }
 
@@ -668,6 +823,160 @@ export function TicketsPanel() {
     void loadTickets()
   }
 
+  /**
+   * Fills the intake form from a pasted vendor ticket instead of typing
+   * every field by hand. Free-text values (name, phone, model, serial,
+   * description) copy straight across; dropdowns are resolved against the
+   * currently loaded `options` by fuzzy name match, since the vendor's own
+   * wording never matches our master-list names exactly. Anything that
+   * can't be resolved — an unmatched dropdown, or a vendor field with no
+   * home on this form (Assigned Employee, Email, Remark) — is surfaced as
+   * a note rather than silently dropped.
+   */
+  const applyPastedTicket = () => {
+    const fields = parsePastedTicketFields(pasteText)
+    const notes: PasteNote[] = []
+
+    // Matching and note-building happen here, once, rather than inside the
+    // setFormData updater below — React (in StrictMode) can invoke a state
+    // updater twice per render to surface impure ones, which was silently
+    // duplicating every note pushed from inside it.
+    const district = fuzzyNameMatch(options?.districts, fields.district ?? '')
+    if (!district && fields.district) {
+      notes.push({
+        message: `District "${fields.district}" wasn't found.`,
+        actions: [
+          { kind: 'pick', target: 'district', label: 'Use existing', options: options?.districts ?? [] },
+          { kind: 'add', target: 'district', label: `Add "${fields.district}" as new district`, value: fields.district },
+        ],
+      })
+    }
+
+    const serviceCenter = fuzzyNameMatch(options?.service_centers, fields.assignedbranch ?? '')
+    if (!serviceCenter && fields.assignedbranch) {
+      notes.push({
+        message: `Assigned Branch "${fields.assignedbranch}" wasn't found — new branches are added from Settings → Master Lists.`,
+        actions: [{ kind: 'pick', target: 'service_center', label: 'Use existing', options: options?.service_centers ?? [] }],
+      })
+    }
+
+    const jobType = fuzzyNameMatch(options?.job_types, fields.complainttype ?? '')
+    if (!jobType && fields.complainttype) {
+      notes.push({
+        message: `Complaint Type "${fields.complainttype}" wasn't matched — new job types are added from Settings → Master Lists.`,
+        actions: [{ kind: 'pick', target: 'job_type', label: 'Use existing', options: options?.job_types ?? [] }],
+      })
+    }
+
+    // "Product" is ambiguous vendor wording: it might name a product
+    // category (LED TV, Washing Machine) or a brand (Neo, Acme). Category
+    // is tried first since it's what the field is named for; a brand match
+    // only counts if no category matched, so a value can't silently claim
+    // both.
+    const category = fuzzyNameMatch(options?.product_categories, fields.product ?? '')
+    const brand = !category ? fuzzyNameMatch(options?.brands, fields.product ?? '') : undefined
+    if (!category && !brand && fields.product) {
+      notes.push({
+        message: `Product "${fields.product}" wasn't matched to a category or a brand.`,
+        actions: [
+          { kind: 'pick', target: 'product_category', label: 'Use existing category', options: options?.product_categories ?? [] },
+          { kind: 'add', target: 'product_category', label: `Add "${fields.product}" as category`, value: fields.product },
+          { kind: 'pick', target: 'brand', label: 'Use existing brand', options: options?.brands ?? [] },
+          { kind: 'add', target: 'brand', label: `Add "${fields.product}" as brand`, value: fields.product },
+        ],
+      })
+    }
+
+    let billDateIso: string | null = null
+    if (fields.billdate) {
+      billDateIso = toIsoDate(fields.billdate)
+      if (!billDateIso) notes.push({ message: `Bill Date "${fields.billdate}" isn't in DD/MM/YYYY format — set it manually.` })
+    }
+
+    let addressLine1: string | undefined
+    let pincode: string | null = null
+    if (fields.address) {
+      const split = splitTrailingPincode(fields.address)
+      addressLine1 = fields.landmark ? `${split.text}, ${fields.landmark}` : split.text
+      pincode = split.pincode
+    } else if (fields.landmark) {
+      addressLine1 = fields.landmark
+    }
+
+    let city: string | undefined
+    if (fields.place) {
+      const split = splitPlacePincode(fields.place)
+      city = split.city
+      pincode = pincode ?? split.pincode
+    }
+
+    if (fields.assignedemployee)
+      notes.push({ message: `Assigned Employee "${fields.assignedemployee}" has no field here — assign the technician after creating the ticket.` })
+    if (fields.email) notes.push({ message: `Email "${fields.email}" has no field on this form yet.` })
+    if (fields.remark) notes.push({ message: `Remark "${fields.remark}" wasn't copied — add it as a comment after creating the ticket.` })
+
+    setFormData((prev) => ({
+      ...prev,
+      ...(fields.code ? { company_ticket_ref: fields.code } : {}),
+      ...(fields.model ? { model_no: fields.model } : {}),
+      ...(fields.serialno ? { serial_no: fields.serialno } : {}),
+      ...(fields.description ? { reported_issue: fields.description } : {}),
+      ...(billDateIso ? { purchase_date: billDateIso } : {}),
+      ...(serviceCenter ? { service_center_id: String(serviceCenter.id) } : {}),
+      ...(jobType ? { job_type_id: String(jobType.id) } : {}),
+      ...(category ? { product_category_id: String(category.id) } : {}),
+      ...(brand ? { brand_id: String(brand.id) } : {}),
+      customer: {
+        ...prev.customer,
+        ...(fields.customer ? { name: fields.customer } : {}),
+        ...(fields.contactnumber ? { phone: toPhoneDigits(fields.contactnumber) } : {}),
+        ...(fields.alternativenumber ? { alt_phone: toPhoneDigits(fields.alternativenumber) } : {}),
+        ...(addressLine1 !== undefined ? { address_line1: addressLine1 } : {}),
+        ...(city !== undefined ? { city } : {}),
+        ...(district ? { district_id: String(district.id) } : {}),
+        ...(pincode ? { pincode } : {}),
+      },
+    }))
+
+    setPasteNotes(notes)
+    setPasteModalOpen(false)
+    setPasteText('')
+    setActiveTab('create')
+  }
+
+  /** Applies a "pick existing" resolution from a paste-note straight to the intake form. */
+  const applyPastedPick = (target: PasteFieldTarget, id: string) => {
+    setFormData((prev) => {
+      switch (target) {
+        case 'district':
+          return { ...prev, customer: { ...prev.customer, district_id: id } }
+        case 'service_center':
+          return { ...prev, service_center_id: id }
+        case 'job_type':
+          return { ...prev, job_type_id: id }
+        case 'product_category':
+          return { ...prev, product_category_id: id }
+        case 'brand':
+          return { ...prev, brand_id: id }
+        default:
+          return prev
+      }
+    })
+  }
+
+  /**
+   * Opens the right quick-add modal for an "add" resolution from a
+   * paste-note, prefilled with the vendor's own wording. `noteIndex` is
+   * threaded through so the note disappears once the add actually saves —
+   * without it, the warning would keep telling the operator a field is
+   * unresolved after they'd already fixed it.
+   */
+  const openQuickAdd = (target: 'district' | 'product_category' | 'brand', value: string, noteIndex: number) => {
+    if (target === 'district') openDistrictModal(value, noteIndex)
+    else if (target === 'product_category') openCategoryModal(value, noteIndex)
+    else openBrandModal(value, noteIndex)
+  }
+
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
@@ -849,6 +1158,18 @@ export function TicketsPanel() {
           >
             {statusFilter === 'active' ? 'Active' : 'Tickets'} ({tickets.length})
           </button>
+          {!editingTicketId && (
+            <button
+              type="button"
+              onClick={() => {
+                setPasteText('')
+                setPasteModalOpen(true)
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              📋 Paste Ticket
+            </button>
+          )}
           <button
             onClick={() => {
               if (editingTicketId) {
@@ -892,6 +1213,62 @@ export function TicketsPanel() {
               >
                 Cancel Edit
               </button>
+            </div>
+          )}
+
+          {pasteNotes.length > 0 && (
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-semibold">Filled from the pasted ticket — please check:</span>
+                <button
+                  type="button"
+                  onClick={() => setPasteNotes([])}
+                  className="text-xs font-medium text-amber-800 hover:underline dark:text-amber-300"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <ul className="list-disc space-y-1.5 pl-5">
+                {pasteNotes.map((note, i) => (
+                  <li key={i}>
+                    <div>{note.message}</div>
+                    {note.actions && note.actions.length > 0 && (
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        {note.actions.map((action, j) =>
+                          action.kind === 'pick' ? (
+                            <select
+                              key={j}
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (!e.target.value) return
+                                applyPastedPick(action.target, e.target.value)
+                                setPasteNotes((prev) => prev.filter((_, idx) => idx !== i))
+                              }}
+                              className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-800 dark:border-amber-700 dark:bg-slate-800 dark:text-amber-200"
+                            >
+                              <option value="">{action.label}…</option>
+                              {action.options.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <button
+                              key={j}
+                              type="button"
+                              onClick={() => openQuickAdd(action.target, action.value, i)}
+                              className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-slate-800 dark:text-amber-200"
+                            >
+                              + {action.label}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -945,7 +1322,7 @@ export function TicketsPanel() {
                 </label>
                 <button
                   type="button"
-                  onClick={openDistrictModal}
+                  onClick={() => openDistrictModal()}
                   className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
                 >
                   + Add new district
@@ -1136,11 +1513,7 @@ export function TicketsPanel() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => {
-                    setNewCategoryName('')
-                    setCategoryError(null)
-                    setCategoryModalOpen(true)
-                  }}
+                  onClick={() => openCategoryModal()}
                   className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
                 >
                   + Add new category
@@ -1578,7 +1951,10 @@ export function TicketsPanel() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setDistrictModalOpen(false)}
+                  onClick={() => {
+                    setDistrictModalOpen(false)
+                    setPendingPasteNoteIndex(null)
+                  }}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
                 >
                   Cancel
@@ -1623,7 +1999,10 @@ export function TicketsPanel() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setCategoryModalOpen(false)}
+                  onClick={() => {
+                    setCategoryModalOpen(false)
+                    setPendingPasteNoteIndex(null)
+                  }}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
                 >
                   Cancel
@@ -1634,6 +2013,54 @@ export function TicketsPanel() {
                   className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
                 >
                   {savingCategory ? 'Adding…' : 'Add Category'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD BRAND MODAL */}
+      {brandModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Add New Brand</h3>
+            <form onSubmit={handleAddBrand} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Brand Name *
+                </label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. Neo"
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              {brandError && (
+                <p className="text-xs font-medium text-red-600 dark:text-red-400">{brandError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBrandModalOpen(false)
+                    setPendingPasteNoteIndex(null)
+                  }}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBrand}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {savingBrand ? 'Adding…' : 'Add Brand'}
                 </button>
               </div>
             </form>
@@ -1682,6 +2109,45 @@ export function TicketsPanel() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PASTE VENDOR TICKET MODAL */}
+      {pasteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="mb-1 text-lg font-bold text-slate-900 dark:text-white">Paste Vendor Ticket</h3>
+            <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+              Paste the ticket text copied from the principal's portal (Code, Complaint Type, Customer,
+              Product, etc.). Select the right Company / Principal above first — matching runs against
+              that principal's service centers and job types. Fields the parser can't confidently match
+              are left for you to pick by hand.
+            </p>
+            <textarea
+              rows={12}
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={'Code\tDN0909260008\tCustomer Detail\nComplaint Type\tService\tCustomer\tSubaida\n...'}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
+            <div className="flex justify-end gap-2 pt-4">
+              <button
+                type="button"
+                onClick={() => setPasteModalOpen(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!pasteText.trim()}
+                onClick={applyPastedTicket}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
+              >
+                Fill Form
+              </button>
+            </div>
           </div>
         </div>
       )}
