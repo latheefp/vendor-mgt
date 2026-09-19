@@ -267,6 +267,12 @@ class TicketsController extends ApiController
             ->orderBy(['name' => 'ASC'])
             ->all();
 
+        $states = $this->fetchTable('States')->find()
+            ->select(['id', 'code', 'name'])
+            ->where(['is_active' => true])
+            ->orderBy(['name' => 'ASC'])
+            ->all();
+
         $technicians = $this->fetchTable('Technicians')->find()
             ->select(['id', 'code', 'name', 'phone', 'service_center_id', 'skills'])
             ->where(['is_active' => true])
@@ -281,6 +287,7 @@ class TicketsController extends ApiController
             'service_centers' => $serviceCenters,
             'brands' => $brands,
             'districts' => $districts,
+            'states' => $states,
             'technicians' => $technicians,
             'job_types' => $lists['job_types'],
             'product_categories' => $lists['product_categories'],

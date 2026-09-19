@@ -969,6 +969,7 @@ export interface TicketOptions {
   job_types: OptionItem[]
   symptoms: Array<OptionItem & { requires_video_proof?: boolean }>
   districts: OptionItem[]
+  states: OptionItem[]
   technicians: Array<{ id: number; code: string; name: string; phone: string; service_center_id: number }>
   /** How a job can end. `is_billable: false` closes it with an empty ledger. */
   resolutions: Array<OptionItem & { requires_spare: boolean; is_billable: boolean }>

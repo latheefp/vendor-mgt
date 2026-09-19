@@ -91,6 +91,13 @@ export function TicketsPanel() {
     },
   })
 
+  const [districtModalOpen, setDistrictModalOpen] = useState(false)
+  const [newDistrictCode, setNewDistrictCode] = useState('')
+  const [newDistrictName, setNewDistrictName] = useState('')
+  const [newDistrictStateId, setNewDistrictStateId] = useState('')
+  const [savingDistrict, setSavingDistrict] = useState(false)
+  const [districtError, setDistrictError] = useState<string | null>(null)
+
   useEffect(() => {
     void loadOptions()
     void loadTickets()
@@ -152,6 +159,49 @@ export function TicketsPanel() {
     const code = opts.requirements?.['ticket.default_district_code']
     const match = typeof code === 'string' ? opts.districts.find((d) => d.code === code) : undefined
     return String((match ?? opts.districts[0])?.id ?? '')
+  }
+
+  const openDistrictModal = () => {
+    setNewDistrictCode('')
+    setNewDistrictName('')
+    setNewDistrictStateId(options?.states[0] ? String(options.states[0].id) : '')
+    setDistrictError(null)
+    setDistrictModalOpen(true)
+  }
+
+  const handleAddDistrict = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingDistrict(true)
+    setDistrictError(null)
+    try {
+      const created = await api.addMasterListItem('districts', {
+        code: newDistrictCode.trim(),
+        name: newDistrictName.trim(),
+        state_id: Number(newDistrictStateId),
+        is_active: true,
+      })
+      const newId = typeof created.id === 'number' ? created.id : undefined
+      if (newId) {
+        const newDistrict = { id: newId, code: String(created.code ?? ''), name: String(created.name ?? '') }
+        setOptions((prev) =>
+          prev
+            ? {
+                ...prev,
+                districts: [...prev.districts, newDistrict].sort((a, b) => a.name.localeCompare(b.name)),
+              }
+            : prev,
+        )
+        setFormData((prev) => ({
+          ...prev,
+          customer: { ...prev.customer, district_id: String(newId) },
+        }))
+      }
+      setDistrictModalOpen(false)
+    } catch (err: unknown) {
+      setDistrictError(err instanceof Error ? err.message : 'Failed to add district')
+    } finally {
+      setSavingDistrict(false)
+    }
   }
 
   const defaultServiceCenterId = (opts: TicketOptions): string => {
@@ -801,9 +851,18 @@ export function TicketsPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                District *
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  District *
+                </label>
+                <button
+                  type="button"
+                  onClick={openDistrictModal}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                >
+                  + Add new district
+                </button>
+              </div>
               <select
                 value={formData.customer.district_id}
                 onChange={(e) =>
@@ -1307,6 +1366,84 @@ export function TicketsPanel() {
                 </tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ADD DISTRICT MODAL */}
+      {districtModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Add New District</h3>
+            <form onSubmit={handleAddDistrict} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  State *
+                </label>
+                <select
+                  required
+                  value={newDistrictStateId}
+                  onChange={(e) => setNewDistrictStateId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="">Select State</option>
+                  {options?.states.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  District Code *
+                </label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. EKM"
+                  value={newDistrictCode}
+                  onChange={(e) => setNewDistrictCode(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  District Name *
+                </label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. Ernakulam"
+                  value={newDistrictName}
+                  onChange={(e) => setNewDistrictName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              {districtError && (
+                <p className="text-xs font-medium text-red-600 dark:text-red-400">{districtError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDistrictModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingDistrict}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {savingDistrict ? 'Adding…' : 'Add District'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
