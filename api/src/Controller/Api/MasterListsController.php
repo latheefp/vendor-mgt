@@ -42,8 +42,10 @@ class MasterListsController extends ApiController
     /**
      * POST /api/master-lists/{list}
      */
-    public function addItem(string $list): Response
+    public function addItem(?string $list = null): Response
     {
+        $list = $this->routeParam('list', $list);
+
         $tableMap = [
             'districts' => 'Districts',
             'symptoms' => 'Symptoms',
@@ -75,8 +77,11 @@ class MasterListsController extends ApiController
     /**
      * PUT /api/master-lists/{list}/{id}
      */
-    public function editItem(string $list, string $id): Response
+    public function editItem(?string $list = null, ?string $id = null): Response
     {
+        $list = $this->routeParam('list', $list);
+        $id = $this->routeParam('id', $id);
+
         $tableMap = [
             'districts' => 'Districts',
             'symptoms' => 'Symptoms',
@@ -114,8 +119,11 @@ class MasterListsController extends ApiController
     /**
      * DELETE /api/master-lists/{list}/{id}
      */
-    public function toggleItem(string $list, string $id): Response
+    public function toggleItem(?string $list = null, ?string $id = null): Response
     {
+        $list = $this->routeParam('list', $list);
+        $id = $this->routeParam('id', $id);
+
         $tableMap = [
             'districts' => 'Districts',
             'symptoms' => 'Symptoms',
