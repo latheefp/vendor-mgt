@@ -32,6 +32,10 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+# .git isn't in this build context, so vite.config.ts can't shell out to
+# git for the commit — CI passes it in as a build-arg instead.
+ARG GIT_COMMIT=unknown
+ENV VITE_APP_COMMIT=$GIT_COMMIT
 RUN npm run build
 
 ########################  prod  ####################################

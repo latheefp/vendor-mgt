@@ -24,6 +24,11 @@ RUN npm ci
 COPY web/ .
 # VITE_API_BASE is relative so requests stay on the same origin (no CORS needed)
 ENV VITE_API_BASE=/api
+# .git isn't in this build context, so the commit has to come in from
+# outside — CI passes the real SHA; a plain `docker build` with no
+# --build-arg falls back to the footer just saying "unknown".
+ARG GIT_COMMIT=unknown
+ENV VITE_APP_COMMIT=$GIT_COMMIT
 RUN npm run build
 
 # -------------------------------------------------------------------

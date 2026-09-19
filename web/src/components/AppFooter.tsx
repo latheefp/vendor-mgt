@@ -1,8 +1,11 @@
 /**
  * The commit id comes from `__APP_COMMIT__`, baked in at build time by
- * `vite.config.ts` (`git rev-parse --short HEAD`) — it identifies exactly
- * what is deployed, not what the developer's working tree happens to be
- * when someone opens this in a browser later.
+ * `vite.config.ts` — it identifies exactly what is deployed, not what the
+ * developer's working tree happens to be when someone opens this in a
+ * browser later. In the production Docker image that value is CI's
+ * `GIT_COMMIT` build-arg (`.git` isn't in that build context, so it can't
+ * come from a `git rev-parse` run inside the container); a local
+ * `npm run dev`/`build` falls back to shelling out to git directly.
  */
 export function AppFooter() {
   return (

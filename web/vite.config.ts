@@ -4,7 +4,16 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
 
+/**
+ * The production Docker build never has `.git` in the image — nothing
+ * copies it in, so `git rev-parse` inside that build always fails. CI
+ * passes the real commit in as a build-arg instead (see the root
+ * Dockerfile and .github/workflows/deploy.yaml); this only falls back to
+ * running git for local `npm run dev`/`build`, where `.git` is right
+ * there on disk.
+ */
 function commitHash(): string {
+  if (process.env.VITE_APP_COMMIT) return process.env.VITE_APP_COMMIT
   try {
     return execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim()
   } catch {
