@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-  - host: vendor-mgt.egrand.in
+  - host: help.egrand.in
     http:
       paths:
       - path: /
