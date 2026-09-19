@@ -669,6 +669,12 @@ export const api = {
     request<ProductCategoryItem>('/product-categories', { method: 'POST', body: payload }),
   updateProductCategory: (id: number, payload: Record<string, unknown>) =>
     request<ProductCategoryItem>(`/product-categories/${id}`, { method: 'PUT', body: payload }),
+  listBrands: (params?: Record<string, string>) =>
+    request<BrandItem[]>('/brands' + (params ? '?' + new URLSearchParams(params).toString() : '')),
+  createBrand: (payload: Record<string, unknown>) =>
+    request<BrandItem>('/brands', { method: 'POST', body: payload }),
+  updateBrand: (id: number, payload: Record<string, unknown>) =>
+    request<BrandItem>(`/brands/${id}`, { method: 'PUT', body: payload }),
   listProducts: (params?: Record<string, string>) =>
     request<ProductItem[]>('/products' + (params ? '?' + new URLSearchParams(params).toString() : '')),
   createProduct: (payload: Record<string, unknown>) =>
@@ -773,6 +779,22 @@ export interface ProductItem {
   is_active: boolean
   company?: CompanyItem
   product_category?: ProductCategoryItem
+}
+
+export interface BrandItem {
+  id: number
+  company_id: number
+  code: string
+  name: string
+  is_active: boolean
+  company?: CompanyItem
+}
+
+export interface StateItem {
+  id: number
+  code: string
+  name: string
+  is_active: boolean
 }
 
 export interface CompanyInvoice {

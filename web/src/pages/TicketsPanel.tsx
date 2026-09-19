@@ -98,6 +98,16 @@ export function TicketsPanel() {
   const [savingDistrict, setSavingDistrict] = useState(false)
   const [districtError, setDistrictError] = useState<string | null>(null)
 
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [savingCategory, setSavingCategory] = useState(false)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+
+  const [symptomModalOpen, setSymptomModalOpen] = useState(false)
+  const [newSymptomName, setNewSymptomName] = useState('')
+  const [savingSymptom, setSavingSymptom] = useState(false)
+  const [symptomError, setSymptomError] = useState<string | null>(null)
+
   useEffect(() => {
     void loadOptions()
     void loadTickets()
@@ -210,6 +220,75 @@ export function TicketsPanel() {
       setDistrictError(err instanceof Error ? err.message : 'Failed to add district')
     } finally {
       setSavingDistrict(false)
+    }
+  }
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingCategory(true)
+    setCategoryError(null)
+    try {
+      const created = await api.createProductCategory({
+        code: newCategoryName.trim().toLowerCase().replace(/\s+/g, '_'),
+        name: newCategoryName.trim(),
+        is_sized: false,
+        sort_order: (options?.product_categories.length ?? 0) + 1,
+        is_active: true,
+      })
+      const newId = typeof created.id === 'number' ? created.id : undefined
+      if (newId) {
+        const newCategory = { id: newId, code: String(created.code ?? ''), name: String(created.name ?? '') }
+        setOptions((prev) =>
+          prev
+            ? {
+                ...prev,
+                product_categories: [...prev.product_categories, newCategory].sort((a, b) =>
+                  a.name.localeCompare(b.name),
+                ),
+              }
+            : prev,
+        )
+        setFormData((prev) => ({ ...prev, product_category_id: String(newId) }))
+      }
+      setCategoryModalOpen(false)
+      setNewCategoryName('')
+    } catch (err: unknown) {
+      setCategoryError(err instanceof Error ? err.message : 'Failed to add category')
+    } finally {
+      setSavingCategory(false)
+    }
+  }
+
+  const handleAddSymptom = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingSymptom(true)
+    setSymptomError(null)
+    try {
+      const created = await api.addMasterListItem('symptoms', {
+        code: newSymptomName.trim().toLowerCase().replace(/\s+/g, '_'),
+        name: newSymptomName.trim(),
+        requires_video_proof: false,
+        is_active: true,
+      })
+      const newId = typeof created.id === 'number' ? created.id : undefined
+      if (newId) {
+        const newSymptom = { id: newId, code: String(created.code ?? ''), name: String(created.name ?? '') }
+        setOptions((prev) =>
+          prev
+            ? {
+                ...prev,
+                symptoms: [...prev.symptoms, newSymptom].sort((a, b) => a.name.localeCompare(b.name)),
+              }
+            : prev,
+        )
+        setFormData((prev) => ({ ...prev, symptom_id: String(newId) }))
+      }
+      setSymptomModalOpen(false)
+      setNewSymptomName('')
+    } catch (err: unknown) {
+      setSymptomError(err instanceof Error ? err.message : 'Failed to add symptom')
+    } finally {
+      setSavingSymptom(false)
     }
   }
 
@@ -1031,9 +1110,22 @@ export function TicketsPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                Product Category
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Product Category
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewCategoryName('')
+                    setCategoryError(null)
+                    setCategoryModalOpen(true)
+                  }}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                >
+                  + Add new category
+                </button>
+              </div>
               <select
                 value={formData.product_category_id}
                 onChange={(e) =>
@@ -1116,9 +1208,22 @@ export function TicketsPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                Catalogued Symptom / Fault
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Catalogued Symptom / Fault
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewSymptomName('')
+                    setSymptomError(null)
+                    setSymptomModalOpen(true)
+                  }}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                >
+                  + Add new symptom
+                </button>
+              </div>
               <select
                 value={formData.symptom_id}
                 onChange={(e) =>
@@ -1459,6 +1564,96 @@ export function TicketsPanel() {
                   className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
                 >
                   {savingDistrict ? 'Adding…' : 'Add District'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD PRODUCT CATEGORY MODAL */}
+      {categoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Add New Category</h3>
+            <form onSubmit={handleAddCategory} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Category Name *
+                </label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. Air Purifier"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              {categoryError && (
+                <p className="text-xs font-medium text-red-600 dark:text-red-400">{categoryError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCategoryModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCategory}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {savingCategory ? 'Adding…' : 'Add Category'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD SYMPTOM MODAL */}
+      {symptomModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Add New Symptom</h3>
+            <form onSubmit={handleAddSymptom} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Symptom / Fault Name *
+                </label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. Remote Not Pairing"
+                  value={newSymptomName}
+                  onChange={(e) => setNewSymptomName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              {symptomError && (
+                <p className="text-xs font-medium text-red-600 dark:text-red-400">{symptomError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSymptomModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSymptom}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {savingSymptom ? 'Adding…' : 'Add Symptom'}
                 </button>
               </div>
             </form>

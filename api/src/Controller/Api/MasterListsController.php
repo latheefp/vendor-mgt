@@ -7,7 +7,7 @@ use Cake\Event\EventInterface;
 use Cake\Http\Response;
 
 /**
- * Master lists API controller for Districts, Symptoms, Resolutions, Hold Reasons, Job Types, Service Centers.
+ * Master lists API controller for States, Districts, Symptoms, Resolutions, Hold Reasons, Job Types, Service Centers.
  */
 class MasterListsController extends ApiController
 {
@@ -22,7 +22,11 @@ class MasterListsController extends ApiController
      */
     public function index(): Response
     {
-        $districts = $this->fetchTable('Districts')->find()->orderBy(['name' => 'ASC'])->all();
+        $states = $this->fetchTable('States')->find()->orderBy(['name' => 'ASC'])->all();
+        $districts = $this->fetchTable('Districts')->find()
+            ->contain(['States'])
+            ->orderBy(['Districts.name' => 'ASC'])
+            ->all();
         $symptoms = $this->fetchTable('Symptoms')->find()->orderBy(['name' => 'ASC'])->all();
         $resolutions = $this->fetchTable('Resolutions')->find()->orderBy(['name' => 'ASC'])->all();
         $holdReasons = $this->fetchTable('HoldReasons')->find()->orderBy(['name' => 'ASC'])->all();
@@ -30,6 +34,7 @@ class MasterListsController extends ApiController
         $serviceCenters = $this->fetchTable('ServiceCenters')->find()->orderBy(['name' => 'ASC'])->all();
 
         return $this->respond([
+            'states' => $states,
             'districts' => $districts,
             'symptoms' => $symptoms,
             'resolutions' => $resolutions,
@@ -47,6 +52,7 @@ class MasterListsController extends ApiController
         $list = $this->routeParam('list', $list);
 
         $tableMap = [
+            'states' => 'States',
             'districts' => 'Districts',
             'symptoms' => 'Symptoms',
             'resolutions' => 'Resolutions',
@@ -83,6 +89,7 @@ class MasterListsController extends ApiController
         $id = $this->routeParam('id', $id);
 
         $tableMap = [
+            'states' => 'States',
             'districts' => 'Districts',
             'symptoms' => 'Symptoms',
             'resolutions' => 'Resolutions',
@@ -125,6 +132,7 @@ class MasterListsController extends ApiController
         $id = $this->routeParam('id', $id);
 
         $tableMap = [
+            'states' => 'States',
             'districts' => 'Districts',
             'symptoms' => 'Symptoms',
             'resolutions' => 'Resolutions',

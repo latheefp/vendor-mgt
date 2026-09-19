@@ -6,11 +6,44 @@ import type {
   CompanyItem,
   ProductCategoryItem,
   ProductItem,
+  BrandItem,
+  StateItem,
   OptionItem,
   TechnicianItem,
 } from '../lib/api'
 
 type SettingsTab = 'users' | 'technicians' | 'roles' | 'companies' | 'rate-cards' | 'products' | 'master-lists'
+
+const SETTINGS_TAB_META: Record<SettingsTab, { title: string; description: string }> = {
+  users: {
+    title: 'Users & Accounts',
+    description: 'Manage user accounts, roles, and service center assignments.',
+  },
+  technicians: {
+    title: 'Technicians',
+    description: 'Manage field technicians, their skills, and service center assignments.',
+  },
+  roles: {
+    title: 'Groups & Permissions',
+    description: 'Configure security groups and granular access control rules.',
+  },
+  companies: {
+    title: 'Companies',
+    description: 'Manage client companies and their districts & service centers.',
+  },
+  'rate-cards': {
+    title: 'Rate Cards & SLA',
+    description: 'Manage pricing rate cards and service level agreements.',
+  },
+  products: {
+    title: 'Products & Appliances',
+    description: 'Manage appliance categories and the product models catalogue.',
+  },
+  'master-lists': {
+    title: 'Master Lists',
+    description: 'Manage shared reference lists used across the system.',
+  },
+}
 
 export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsTab }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab)
@@ -21,98 +54,14 @@ export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsT
     }
   }, [initialTab])
 
+  const meta = SETTINGS_TAB_META[activeTab]
+
   return (
     <div className="space-y-6">
-      {/* Top Header & Tab Navigation */}
-      <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            System Settings & Administration
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Manage users, technicians, groups & permissions, companies, rate cards, appliances, and master lists.
-          </p>
-        </div>
-      </div>
-
-      {/* Tabs Bar */}
-      <div className="flex overflow-x-auto border-b border-slate-200 text-sm font-medium dark:border-slate-800">
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'users'
-              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <span className="text-base">👤</span> Users Management
-        </button>
-
-        <button
-          onClick={() => setActiveTab('technicians')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'technicians'
-              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <span className="text-base">🛠️</span> Technicians
-        </button>
-
-        <button
-          onClick={() => setActiveTab('roles')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'roles'
-              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <span className="text-base">🛡️</span> Groups & Permissions
-        </button>
-
-        <button
-          onClick={() => setActiveTab('companies')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'companies'
-              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <span className="text-base">🏢</span> Companies
-        </button>
-
-        <button
-          onClick={() => setActiveTab('rate-cards')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'rate-cards'
-              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <span className="text-base">💳</span> Rate Cards & SLA
-        </button>
-
-        <button
-          onClick={() => setActiveTab('products')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'products'
-              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <span className="text-base">📦</span> Products & Appliances
-        </button>
-
-        <button
-          onClick={() => setActiveTab('master-lists')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 transition ${
-            activeTab === 'master-lists'
-              ? 'border-brand-600 font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <span className="text-base">📋</span> Master Lists
-        </button>
+      {/* Top Header */}
+      <div className="border-b border-slate-200 pb-4 dark:border-slate-800">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{meta.title}</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{meta.description}</p>
       </div>
 
       {/* Tab Panels */}
@@ -2649,6 +2598,7 @@ function RateCardsTab() {
 function ProductsTab() {
   const [categories, setCategories] = useState<ProductCategoryItem[]>([])
   const [products, setProducts] = useState<ProductItem[]>([])
+  const [brands, setBrands] = useState<BrandItem[]>([])
   const [companies, setCompanies] = useState<CompanyItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -2656,6 +2606,11 @@ function ProductsTab() {
   const [catCode, setCatCode] = useState('')
   const [catName, setCatName] = useState('')
   const [catIsSized, setCatIsSized] = useState(false)
+
+  const [brandModalOpen, setBrandModalOpen] = useState(false)
+  const [brandCompanyId, setBrandCompanyId] = useState('')
+  const [brandCode, setBrandCode] = useState('')
+  const [brandName, setBrandName] = useState('')
 
   const [prodModalOpen, setProdModalOpen] = useState(false)
   const [prodCompanyId, setProdCompanyId] = useState('')
@@ -2669,13 +2624,15 @@ function ProductsTab() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [cRes, pRes, companyRes] = await Promise.all([
+      const [cRes, pRes, brandRes, companyRes] = await Promise.all([
         api.listProductCategories(),
         api.listProducts(),
+        api.listBrands(),
         api.listCompanies(),
       ])
       setCategories(cRes)
       setProducts(pRes)
+      setBrands(brandRes)
       setCompanies(companyRes)
     } catch (e) {
       console.error(e)
@@ -2705,6 +2662,27 @@ function ProductsTab() {
       await loadData()
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to create category')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAddBrand = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await api.createBrand({
+        company_id: Number(brandCompanyId),
+        code: brandCode.toLowerCase().replace(/\s+/g, '_'),
+        name: brandName,
+        is_active: true,
+      })
+      setBrandModalOpen(false)
+      setBrandCode('')
+      setBrandName('')
+      await loadData()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to create brand')
     } finally {
       setSaving(false)
     }
@@ -2777,6 +2755,72 @@ function ProductsTab() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Brands Section */}
+      <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+              Brands ({brands.length})
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Sub-brands a company sells under (e.g. Dianox under Dianora).
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setBrandCompanyId(companies[0]?.id ? String(companies[0].id) : '')
+              setBrandCode('')
+              setBrandName('')
+              setBrandModalOpen(true)
+            }}
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700"
+          >
+            + Add Brand
+          </button>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Code</th>
+                <th className="px-4 py-3">Brand Name</th>
+                <th className="px-4 py-3">Company</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    Loading brands…
+                  </td>
+                </tr>
+              ) : brands.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    No brands found.
+                  </td>
+                </tr>
+              ) : (
+                brands.map((b) => (
+                  <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-4 py-3 font-mono font-semibold text-slate-900 dark:text-white">
+                      {b.code}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                      {b.name}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                      {b.company?.name || '—'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -2928,6 +2972,82 @@ function ProductsTab() {
         </div>
       )}
 
+      {/* Add Brand Modal */}
+      {brandModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Add Brand</h3>
+            <form onSubmit={handleAddBrand} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Company
+                </label>
+                <select
+                  required
+                  value={brandCompanyId}
+                  onChange={(e) => setBrandCompanyId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                >
+                  <option value="" disabled>
+                    Select…
+                  </option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Brand Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. dianox"
+                  value={brandCode}
+                  onChange={(e) => setBrandCode(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Brand Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Dianox"
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setBrandModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || !brandCompanyId}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
+                >
+                  {saving ? 'Creating…' : 'Create Brand'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Add Product Modal */}
       {prodModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
@@ -3053,6 +3173,341 @@ function ProductsTab() {
 /* ==================================================================== */
 /* 6. MASTER LISTS TAB                                                  */
 /* ==================================================================== */
+
+/**
+ * States and districts on one page: a district cannot be added without
+ * picking a state, so splitting them into separate tabs just meant
+ * flipping back and forth to look up the state code first.
+ */
+function GeographySection({
+  states,
+  districts,
+  loading,
+  onChanged,
+}: {
+  states: StateItem[]
+  districts: any[]
+  loading: boolean
+  onChanged: () => Promise<void>
+}) {
+  const [stateModalOpen, setStateModalOpen] = useState(false)
+  const [stateCode, setStateCode] = useState('')
+  const [stateName, setStateName] = useState('')
+
+  const [districtModalOpen, setDistrictModalOpen] = useState(false)
+  const [districtStateId, setDistrictStateId] = useState('')
+  const [districtCode, setDistrictCode] = useState('')
+  const [districtName, setDistrictName] = useState('')
+
+  const [saving, setSaving] = useState(false)
+
+  const handleAddState = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await api.addMasterListItem('states', {
+        code: stateCode.toUpperCase().trim(),
+        name: stateName,
+        is_active: true,
+      })
+      setStateModalOpen(false)
+      setStateCode('')
+      setStateName('')
+      await onChanged()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to add state')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAddDistrict = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await api.addMasterListItem('districts', {
+        state_id: Number(districtStateId),
+        code: districtCode.toLowerCase().replace(/\s+/g, '_'),
+        name: districtName,
+        is_active: true,
+      })
+      setDistrictModalOpen(false)
+      setDistrictCode('')
+      setDistrictName('')
+      await onChanged()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to add district')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* States */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              States ({states.length})
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              The states a district must belong to.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setStateCode('')
+              setStateName('')
+              setStateModalOpen(true)
+            }}
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700"
+          >
+            + Add State
+          </button>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Code</th>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Districts</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    Loading states…
+                  </td>
+                </tr>
+              ) : states.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    No states found.
+                  </td>
+                </tr>
+              ) : (
+                states.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-4 py-3 font-mono font-semibold text-slate-900 dark:text-white">
+                      {s.code}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                      {s.name}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                      {districts.filter((d) => d.state_id === s.id).length}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Districts */}
+      <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              Districts ({districts.length})
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Customer addresses resolve to one of these.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setDistrictStateId(states[0]?.id ? String(states[0].id) : '')
+              setDistrictCode('')
+              setDistrictName('')
+              setDistrictModalOpen(true)
+            }}
+            disabled={states.length === 0}
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
+            title={states.length === 0 ? 'Add a state first' : undefined}
+          >
+            + Add District
+          </button>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Code</th>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">State</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    Loading districts…
+                  </td>
+                </tr>
+              ) : districts.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    No districts found.
+                  </td>
+                </tr>
+              ) : (
+                districts.map((d: any) => (
+                  <tr key={d.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-4 py-3 font-mono font-semibold text-slate-900 dark:text-white">
+                      {d.code}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                      {d.name}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                      {d.state?.name || '—'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add State Modal */}
+      {stateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Add State</h3>
+            <form onSubmit={handleAddState} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  State Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. KL"
+                  value={stateCode}
+                  onChange={(e) => setStateCode(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  State Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Kerala"
+                  value={stateName}
+                  onChange={(e) => setStateName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setStateModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
+                >
+                  {saving ? 'Adding…' : 'Add State'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add District Modal */}
+      {districtModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Add District</h3>
+            <form onSubmit={handleAddDistrict} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  State
+                </label>
+                <select
+                  required
+                  value={districtStateId}
+                  onChange={(e) => setDistrictStateId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                >
+                  {states.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  District Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. kkd"
+                  value={districtCode}
+                  onChange={(e) => setDistrictCode(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  District Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Kozhikode"
+                  value={districtName}
+                  onChange={(e) => setDistrictName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setDistrictModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
+                >
+                  {saving ? 'Adding…' : 'Add District'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MasterListsTab() {
   const [listsData, setListsData] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
@@ -3127,101 +3582,114 @@ function MasterListsTab() {
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
             }`}
           >
-            {tab.label} ({listsData[tab.key]?.length || 0})
+            {tab.key === 'districts'
+              ? `${tab.label} (${(listsData.states?.length || 0) + (listsData.districts?.length || 0)})`
+              : `${tab.label} (${listsData[tab.key]?.length || 0})`}
           </button>
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
-        <h3 className="text-base font-bold text-slate-900 dark:text-white capitalize">
-          {selectedList.replace('_', ' ')} Master List
-        </h3>
-        <button
-          onClick={() => {
-            setCode('')
-            setName('')
-            setRequiresVideoProof(false)
-            setModalOpen(true)
-          }}
-          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700"
-        >
-          + Add New Item
-        </button>
-      </div>
+      {selectedList === 'districts' ? (
+        <GeographySection
+          states={(listsData.states as StateItem[]) || []}
+          districts={listsData.districts || []}
+          loading={loading}
+          onChanged={loadLists}
+        />
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white capitalize">
+              {selectedList.replace('_', ' ')} Master List
+            </h3>
+            <button
+              onClick={() => {
+                setCode('')
+                setName('')
+                setRequiresVideoProof(false)
+                setModalOpen(true)
+              }}
+              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700"
+            >
+              + Add New Item
+            </button>
+          </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
-            <tr>
-              <th className="px-4 py-3">Code</th>
-              <th className="px-4 py-3">Name / Label</th>
-              <th className="px-4 py-3">Details / Category</th>
-              {selectedList === 'symptoms' && <th className="px-4 py-3">Video Proof Rule</th>}
-              <th className="px-4 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {loading ? (
-              <tr>
-                <td colSpan={selectedList === 'symptoms' ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
-                  Loading master list items…
-                </td>
-              </tr>
-            ) : items.length === 0 ? (
-              <tr>
-                <td colSpan={selectedList === 'symptoms' ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
-                  No items in this master list.
-                </td>
-              </tr>
-            ) : (
-              items.map((item: any) => (
-                <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-mono font-semibold text-slate-900 dark:text-white">
-                    {item.code}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
-                    {item.name}
-                  </td>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                    {item.product_category?.name || item.description || item.city || '—'}
-                  </td>
-                  {selectedList === 'symptoms' && (
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={async () => {
-                          try {
-                            await api.updateMasterListItem('symptoms', item.id, {
-                              requires_video_proof: !item.requires_video_proof,
-                            })
-                            await loadLists()
-                          } catch (err: unknown) {
-                            alert(err instanceof Error ? err.message : 'Could not update video proof requirement')
-                          }
-                        }}
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
-                          item.requires_video_proof
-                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
-                        }`}
-                      >
-                        {item.requires_video_proof ? '📹 Video Proof Mandatory' : '📷 Optional Video'}
-                      </button>
-                    </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                      Active
-                    </span>
-                  </td>
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
+                <tr>
+                  <th className="px-4 py-3">Code</th>
+                  <th className="px-4 py-3">Name / Label</th>
+                  <th className="px-4 py-3">Details / Category</th>
+                  {selectedList === 'symptoms' && <th className="px-4 py-3">Video Proof Rule</th>}
+                  <th className="px-4 py-3">Status</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {loading ? (
+                  <tr>
+                    <td colSpan={selectedList === 'symptoms' ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
+                      Loading master list items…
+                    </td>
+                  </tr>
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan={selectedList === 'symptoms' ? 5 : 4} className="px-4 py-8 text-center text-slate-500">
+                      No items in this master list.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((item: any) => (
+                    <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                      <td className="px-4 py-3 font-mono font-semibold text-slate-900 dark:text-white">
+                        {item.code}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                        {item.name}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                        {item.product_category?.name || item.description || item.city || '—'}
+                      </td>
+                      {selectedList === 'symptoms' && (
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.updateMasterListItem('symptoms', item.id, {
+                                  requires_video_proof: !item.requires_video_proof,
+                                })
+                                await loadLists()
+                              } catch (err: unknown) {
+                                alert(err instanceof Error ? err.message : 'Could not update video proof requirement')
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                              item.requires_video_proof
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
+                            }`}
+                          >
+                            {item.requires_video_proof ? '📹 Video Proof Mandatory' : '📷 Optional Video'}
+                          </button>
+                        </td>
+                      )}
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                          Active
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {/* Add Master List Item Modal */}
-      {modalOpen && (
+      {selectedList !== 'districts' && modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">

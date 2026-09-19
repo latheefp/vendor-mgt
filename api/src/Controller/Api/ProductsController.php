@@ -7,7 +7,7 @@ use Cake\Event\EventInterface;
 use Cake\Http\Response;
 
 /**
- * Products and Appliance Categories API controller.
+ * Products, Appliance Categories, and Brands API controller.
  */
 class ProductsController extends ApiController
 {
@@ -17,6 +17,7 @@ class ProductsController extends ApiController
         $this->Authentication->allowUnauthenticated([
             'index', 'view', 'add', 'edit', 'delete',
             'categories', 'addCategory', 'editCategory',
+            'brands', 'addBrand', 'editBrand',
         ]);
     }
 
@@ -31,6 +32,72 @@ class ProductsController extends ApiController
             ->all();
 
         return $this->respond($categories);
+    }
+
+    /**
+     * GET /api/brands
+     */
+    public function brands(): Response
+    {
+        $brandsTable = $this->fetchTable('Brands');
+        $query = $brandsTable->find()->contain(['Companies']);
+
+        $companyId = $this->request->getQuery('company_id');
+        if ($companyId) {
+            $query->where(['Brands.company_id' => (int)$companyId]);
+        }
+
+        $brands = $query->orderBy(['Brands.name' => 'ASC'])->all();
+
+        return $this->respond($brands);
+    }
+
+    /**
+     * POST /api/brands
+     */
+    public function addBrand(): Response
+    {
+        $brandsTable = $this->fetchTable('Brands');
+        $data = (array)$this->request->getData();
+
+        $brand = $brandsTable->newEntity($data);
+        if ($brand->hasErrors()) {
+            return $this->fail('validation_error', 'Invalid brand data.', 422, $brand->getErrors());
+        }
+
+        if (!$brandsTable->save($brand)) {
+            return $this->fail('save_failed', 'Could not create brand.', 400, $brand->getErrors());
+        }
+
+        $brand = $brandsTable->get($brand->id, contain: ['Companies']);
+        return $this->respond($brand, [], 201);
+    }
+
+    /**
+     * PUT /api/brands/{id}
+     */
+    public function editBrand(string $id): Response
+    {
+        $brandsTable = $this->fetchTable('Brands');
+        $brand = $brandsTable->find()->where(['id' => (int)$id])->first();
+
+        if ($brand === null) {
+            return $this->fail('not_found', 'Brand not found.', 404);
+        }
+
+        $data = (array)$this->request->getData();
+        $brand = $brandsTable->patchEntity($brand, $data);
+
+        if ($brand->hasErrors()) {
+            return $this->fail('validation_error', 'Invalid brand data.', 422, $brand->getErrors());
+        }
+
+        if (!$brandsTable->save($brand)) {
+            return $this->fail('save_failed', 'Could not update brand.', 400, $brand->getErrors());
+        }
+
+        $brand = $brandsTable->get($brand->id, contain: ['Companies']);
+        return $this->respond($brand);
     }
 
     /**

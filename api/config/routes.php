@@ -177,6 +177,9 @@ return function (RouteBuilder $routes): void {
         $builder->get('/product-categories', ['controller' => 'Products', 'action' => 'categories', 'prefix' => 'Api']);
         $builder->post('/product-categories', ['controller' => 'Products', 'action' => 'addCategory', 'prefix' => 'Api']);
         $builder->put('/product-categories/{id}', ['controller' => 'Products', 'action' => 'editCategory', 'prefix' => 'Api']);
+        $builder->get('/brands', ['controller' => 'Products', 'action' => 'brands', 'prefix' => 'Api']);
+        $builder->post('/brands', ['controller' => 'Products', 'action' => 'addBrand', 'prefix' => 'Api']);
+        $builder->put('/brands/{id}', ['controller' => 'Products', 'action' => 'editBrand', 'prefix' => 'Api']);
         $builder->get('/products', ['controller' => 'Products', 'action' => 'index', 'prefix' => 'Api']);
         $builder->post('/products', ['controller' => 'Products', 'action' => 'add', 'prefix' => 'Api']);
         $builder->get('/products/{id}', ['controller' => 'Products', 'action' => 'view', 'prefix' => 'Api']);
