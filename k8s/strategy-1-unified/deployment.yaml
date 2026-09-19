@@ -49,7 +49,7 @@ spec:
         - name: DB_PORT
           value: "3306"
         - name: DB_NAME
-          value: "vendormgt"
+          value: "vendor-mngt"
         - name: CACHE_ENGINE
           value: "redis"
         - name: REDIS_PORT
@@ -57,7 +57,7 @@ spec:
         # Distinct prefix/index so this app doesn't collide with other
         # apps on the same shared Redis instance.
         - name: REDIS_PREFIX
-          value: "vendormgt:"
+          value: "vendor"
         - name: REDIS_DATABASE
           value: "1"
         - name: S3_BUCKET
