@@ -16,6 +16,8 @@ spec:
       labels:
         app.kubernetes.io/name: gvs-app
     spec:
+      imagePullSecrets:
+      - name: ghcr-pull-secret
       volumes:
       - name: uploads
         nfs:
@@ -23,7 +25,7 @@ spec:
           path: /apps/share/vendormgt
       containers:
       - name: app
-        image: latheefp/gvs-app:latest
+        image: ghcr.io/latheefp/gvs-app:latest
         imagePullPolicy: Always
         ports:
         - name: http

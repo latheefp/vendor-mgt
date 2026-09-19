@@ -9,6 +9,9 @@ jobs:
   build-and-deploy:
     name: Build, push and deploy
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout code
@@ -16,12 +19,11 @@ jobs:
 
       - name: Build and push Docker image
         env:
-          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
-          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
           IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           docker build . -t "$IMAGE_NAME:latest" -t "$IMAGE_NAME:${{ github.sha }}"
-          echo "$DOCKERHUB_PASSWORD" | base64 -d | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker push "$IMAGE_NAME:latest"
           docker push "$IMAGE_NAME:${{ github.sha }}"
 
