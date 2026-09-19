@@ -5,7 +5,9 @@
 
 # ---- api (CakePHP) ----------------------------------------------
 /api/vendor/
-/api/config/app_local.php
+# app_local.php is tracked on purpose: every value in it comes from an
+# environment variable, so it carries no secrets and needs to ship in
+# the image for production to have working DB/Redis/email/storage config.
 /api/logs/*
 !/api/logs/.gitkeep
 /api/tmp/*
