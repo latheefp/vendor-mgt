@@ -51,9 +51,7 @@ class AppSettingsController extends ApiController
 
         $data = (array)$this->request->getData();
         $settings = $table->patchEntity($settings, $data, [
-            // The logo/favicon endpoints are not built yet; an edit here
-            // must not be able to null them out through an absent field.
-            'fields' => ['timezone', 'date_format', 'time_format'],
+            'fields' => ['timezone', 'date_format', 'time_format', 'logo_base64', 'favicon_base64'],
         ]);
 
         if ($settings->hasErrors()) {

@@ -3830,6 +3830,43 @@ function formatPreview(timezone: string, dateFormat: string, timeFormat: string)
 }
 
 function ConfigurationsTab() {
+  const [subTab, setSubTab] = useState<'general' | 'branding'>('general')
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800">
+        <button
+          onClick={() => setSubTab('general')}
+          className={`px-4 py-2 text-sm font-medium transition ${
+            subTab === 'general'
+              ? 'border-b-2 border-brand-600 text-brand-600 dark:text-brand-400'
+              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          General
+        </button>
+        <button
+          onClick={() => setSubTab('branding')}
+          className={`px-4 py-2 text-sm font-medium transition ${
+            subTab === 'branding'
+              ? 'border-b-2 border-brand-600 text-brand-600 dark:text-brand-400'
+              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          Logo &amp; Favicon
+        </button>
+      </div>
+
+      {subTab === 'general' && <GeneralConfigurationsTab />}
+      {subTab === 'branding' && <BrandingConfigurationsTab />}
+    </div>
+  )
+}
+
+/* ==================================================================== */
+/* 8a. CONFIGURATIONS — GENERAL SUB-TAB                                 */
+/* ==================================================================== */
+function GeneralConfigurationsTab() {
   const [settings, setSettings] = useState<AppSettingsItem | null>(null)
   const [meta, setMeta] = useState<AppSettingsMeta>({ timezones: [], date_formats: [], time_formats: [] })
   const [loading, setLoading] = useState(true)
@@ -3983,6 +4020,203 @@ function ConfigurationsTab() {
             className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save Configuration'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+/* ==================================================================== */
+/* 8b. CONFIGURATIONS — LOGO & FAVICON SUB-TAB                          */
+/* ==================================================================== */
+const MAX_LOGO_BYTES = 1 * 1024 * 1024
+const MAX_FAVICON_BYTES = 256 * 1024
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function BrandingConfigurationsTab() {
+  const [settings, setSettings] = useState<AppSettingsItem | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [logo, setLogo] = useState<string | null>(null)
+  const [favicon, setFavicon] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [savedMsg, setSavedMsg] = useState('')
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const { data } = await api.getAppSettings()
+      setSettings(data)
+      setLogo(data.logo_base64)
+      setFavicon(data.favicon_base64)
+    } catch (e) {
+      console.error('Failed to load app settings', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadData()
+  }, [])
+
+  const handlePick = async (
+    file: File | undefined,
+    maxBytes: number,
+    setValue: (value: string | null) => void
+  ) => {
+    if (!file) return
+    setErrorMsg('')
+    if (file.size > maxBytes) {
+      setErrorMsg(`"${file.name}" is too large (max ${Math.round(maxBytes / 1024)} KB).`)
+      return
+    }
+    try {
+      setValue(await readFileAsDataUrl(file))
+    } catch {
+      setErrorMsg(`Could not read "${file.name}".`)
+    }
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setErrorMsg('')
+    setSavedMsg('')
+
+    try {
+      const updated = await api.updateAppSettings({
+        logo_base64: logo,
+        favicon_base64: favicon,
+      })
+      setSettings(updated)
+      setSavedMsg('Branding saved.')
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save branding')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="py-8 text-center text-sm text-slate-500">Loading branding…</div>
+  }
+
+  const dirty = !!settings && (logo !== settings.logo_base64 || favicon !== settings.favicon_base64)
+
+  return (
+    <div className="max-w-xl space-y-4">
+      <form
+        onSubmit={handleSave}
+        className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900"
+      >
+        {errorMsg && (
+          <div className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+            {errorMsg}
+          </div>
+        )}
+        {savedMsg && !dirty && (
+          <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+            {savedMsg}
+          </div>
+        )}
+
+        {/* Logo */}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            Portal Logo
+          </label>
+          <p className="mb-2 text-xs text-slate-400">PNG, JPG, WebP, or SVG — up to 1 MB.</p>
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+              {logo ? (
+                <img src={logo} alt="Logo preview" className="h-full w-full object-contain" />
+              ) : (
+                <span className="text-[10px] text-slate-400">No logo</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-400 dark:border-slate-700 dark:text-slate-300">
+                Upload…
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  className="hidden"
+                  onChange={(e) => {
+                    void handlePick(e.target.files?.[0], MAX_LOGO_BYTES, setLogo)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {logo && (
+                <button
+                  type="button"
+                  onClick={() => setLogo(null)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Favicon */}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            Favicon
+          </label>
+          <p className="mb-2 text-xs text-slate-400">PNG, ICO, or SVG — up to 256 KB. Square images work best.</p>
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+              {favicon ? (
+                <img src={favicon} alt="Favicon preview" className="h-8 w-8 object-contain" />
+              ) : (
+                <span className="text-[10px] text-slate-400">None</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-400 dark:border-slate-700 dark:text-slate-300">
+                Upload…
+                <input
+                  type="file"
+                  accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml"
+                  className="hidden"
+                  onChange={(e) => {
+                    void handlePick(e.target.files?.[0], MAX_FAVICON_BYTES, setFavicon)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {favicon && (
+                <button
+                  type="button"
+                  onClick={() => setFavicon(null)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <button
+            type="submit"
+            disabled={saving || !dirty}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save Branding'}
           </button>
         </div>
       </form>
