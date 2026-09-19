@@ -16,8 +16,6 @@ spec:
       labels:
         app.kubernetes.io/name: gvs-app
     spec:
-      imagePullSecrets:
-      - name: ghcr-pull-secret
       volumes:
       - name: uploads
         nfs:
