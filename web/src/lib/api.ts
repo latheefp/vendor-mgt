@@ -564,6 +564,34 @@ export const api = {
   listReceivables: (asOf?: string) =>
     request<ReceivablesReport>('/receivables' + (asOf ? `?as_of=${asOf}` : '')),
 
+  listTechnicianDues: (asOf?: string) =>
+    request<TechnicianDuesReport>('/technician-dues' + (asOf ? `?as_of=${asOf}` : '')),
+
+  /** Defaults to last calendar month when no period is given. */
+  getProfitAndLoss: (periodStart?: string, periodEnd?: string) =>
+    request<ProfitAndLossReport>(
+      '/reports/profit-loss' +
+        (periodStart && periodEnd ? `?period_start=${periodStart}&period_end=${periodEnd}` : ''),
+    ),
+
+  listSavingsBalances: () => request<SavingsCenterBalance[]>('/service-centers/savings'),
+
+  getSavingsDetail: (serviceCenterId: number) =>
+    request<SavingsDetail>(`/service-centers/${serviceCenterId}/savings`),
+
+  /** A signed rupee string: positive credits the balance, negative debits it. */
+  adjustSavings: (serviceCenterId: number, amount: string, description: string) =>
+    request<SavingsEntry>(`/service-centers/${serviceCenterId}/savings/adjust`, {
+      method: 'POST',
+      body: { amount, description },
+    }),
+
+  getMyWallet: () => request<WalletSummary>('/wallet/me'),
+
+  /** Raises a draft payout over everything unclaimed to date. Desk still approves and pays it. */
+  withdrawMyWallet: () =>
+    request<{ payout_id: number; payout_no: string }>('/wallet/me/withdraw', { method: 'POST' }),
+
   /** The total broken into buckets, and every line behind it. */
   getInvoice: (id: number) => request<CompanyInvoiceDetail>(`/invoices/${id}`),
 
@@ -862,6 +890,119 @@ export interface ReceivablesReport {
     received: Money
     total_due: Money
   }
+}
+
+/**
+ * One row of the P&L breakdown — one charge line type on one ledger,
+ * summed across every ticket closed in the period.
+ */
+export interface ProfitAndLossLine {
+  ledger: string
+  ledger_label: string
+  is_inflow: boolean
+  line_type: string
+  line_type_label: string
+  amount: Money
+  ticket_count: number
+}
+
+/**
+ * Income, expenses and what was kept, for tickets closed in a period.
+ *
+ * Built straight from the frozen charge ledger — the same rows an invoice
+ * or a payout run would claim — so it never disagrees with either.
+ */
+export interface ProfitAndLossReport {
+  period_start: string
+  period_end: string
+  ticket_count: number
+  income: {
+    company_receivable: Money
+    customer_collection: Money
+    total: Money
+  }
+  expenses: {
+    company_payable: Money
+    technician_payable: Money
+    total: Money
+  }
+  net_margin: Money
+  breakdown: ProfitAndLossLine[]
+}
+
+/**
+ * What one technician is owed, split by how far along it is towards being
+ * paid — mirrors `CompanyReceivable` on the other side of the ledger.
+ */
+export interface TechnicianDue {
+  technician: { id: number; code: string; name: string }
+  /** Frozen work not yet claimed by any payout run. */
+  unclaimed: Money
+  unclaimed_ticket_count: number
+  draft: Money
+  approved: Money
+  /** unclaimed + draft + approved — what it would cost to settle up. */
+  total_due: Money
+  paid: Money
+  payout_count: number
+  pending_payout_count: number
+}
+
+export interface TechnicianDuesReport {
+  as_of: string
+  technicians: TechnicianDue[]
+  totals: {
+    unclaimed_ticket_count: number
+    unclaimed: Money
+    draft: Money
+    approved: Money
+    total_due: Money
+    paid: Money
+  }
+}
+
+/**
+ * The service centre's own cash position — a different figure from the
+ * P&L. This only moves on a real cash event: an invoice payment landing,
+ * a technician payout actually being paid, or a desk correction. A
+ * ticket closing moves the P&L and not this.
+ */
+export interface SavingsCenterBalance {
+  service_center: { id: number; code: string; name: string }
+  balance: Money
+}
+
+export interface SavingsEntry {
+  id: number
+  entry_type: 'credit' | 'debit'
+  source_type: string
+  source_id: number | null
+  amount: Money
+  balance_after: Money
+  description: string
+  created: string
+  created_by: string | null
+}
+
+export interface SavingsDetail {
+  service_center_id: number
+  balance: Money
+  ledger: SavingsEntry[]
+}
+
+/** One technician's own dues — the same row an admin's dues table shows. */
+export interface WalletSummary {
+  due: TechnicianDue & { as_of: string }
+  history: Array<{
+    id: number
+    payout_no: string
+    status: string
+    period_start: string
+    period_end: string
+    net: Money
+    paid_at: string | null
+    created: string
+  }>
 }
 
 export interface InvoicePreview {

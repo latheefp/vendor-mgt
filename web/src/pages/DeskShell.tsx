@@ -6,10 +6,19 @@ import { RatePreviewPanel } from './RatePreviewPanel'
 import { TicketsPanel } from './TicketsPanel'
 import { InvoicingPanel } from './InvoicingPanel'
 import { ReceivablesPanel } from './ReceivablesPanel'
+import { ProfitLossPanel } from './ProfitLossPanel'
 import { SparesPanel } from './SparesPanel'
 import { SettingsPanel } from './SettingsPanel'
 
-type Section = 'dashboard' | 'tickets' | 'spares' | 'invoicing' | 'receivables' | 'pricing' | 'settings'
+type Section =
+  | 'dashboard'
+  | 'tickets'
+  | 'spares'
+  | 'invoicing'
+  | 'receivables'
+  | 'profit-loss'
+  | 'pricing'
+  | 'settings'
 type SettingsTab =
   | 'users'
   | 'technicians'
@@ -20,7 +29,7 @@ type SettingsTab =
   | 'master-lists'
   | 'configurations'
 
-export function DeskShell() {
+export function DeskShell({ logo }: { logo?: string | null }) {
   const { user, logout } = useAuth()
   const [section, setSection] = useState<Section>('dashboard')
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('users')
@@ -56,9 +65,17 @@ export function DeskShell() {
         {/* Sidebar Header / Brand Logo */}
         <div className="flex h-16 items-center justify-between border-b border-slate-800 px-4">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 font-bold text-white shadow-md">
-              G
-            </div>
+            {logo ? (
+              <img
+                src={logo}
+                alt="Portal logo"
+                className="h-9 w-9 shrink-0 rounded-xl object-contain shadow-md"
+              />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 font-bold text-white shadow-md">
+                G
+              </div>
+            )}
             {!sidebarCollapsed && (
               <span className="truncate font-semibold tracking-tight text-white">
                 Grand VendorService
@@ -172,6 +189,19 @@ export function DeskShell() {
               >
                 <span className="text-base">📥</span>
                 {!sidebarCollapsed && <span>Receivables</span>}
+              </button>
+
+              <button
+                onClick={() => handleNavigate('profit-loss')}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                  section === 'profit-loss'
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
+                }`}
+                title="Income, expenses and what was kept"
+              >
+                <span className="text-base">📈</span>
+                {!sidebarCollapsed && <span>Profit &amp; Loss</span>}
               </button>
 
               <button
@@ -402,6 +432,8 @@ export function DeskShell() {
             <InvoicingPanel />
           ) : section === 'receivables' ? (
             <ReceivablesPanel />
+          ) : section === 'profit-loss' ? (
+            <ProfitLossPanel />
           ) : section === 'settings' ? (
             <SettingsPanel initialTab={settingsTab} />
           ) : (

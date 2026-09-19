@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/auth'
 import { AppFooter } from '../components/AppFooter'
+import { api, ApiError, type WalletSummary } from '../lib/api'
 
 /**
  * The field shell.
@@ -50,6 +52,8 @@ export function FieldShell() {
           </p>
         </div>
 
+        <WalletCard />
+
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
           <p className="font-medium">No jobs yet</p>
           <p className="mx-auto mt-2 max-w-xs text-sm text-slate-500 dark:text-slate-400">
@@ -90,5 +94,154 @@ export function FieldShell() {
 
       <AppFooter />
     </div>
+  )
+}
+
+/**
+ * What this technician is owed, and the one action they can take on it
+ * themselves.
+ *
+ * "Withdraw" does not move money on its own — there is no payment
+ * gateway behind this app. It raises a draft payout over everything
+ * unclaimed to date, exactly the way the desk's own "generate payout"
+ * does, so the desk still has to approve it and record the actual bank
+ * transfer. What this removes is having to ask someone to start that run.
+ */
+function WalletCard() {
+  const [wallet, setWallet] = useState<WalletSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      setWallet(await api.getMyWallet())
+    } catch {
+      // Desk staff never see this screen, but a stray link should not
+      // crash the page — it just leaves the card unable to load.
+      setWallet(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const withdraw = async () => {
+    setWithdrawing(true)
+    setMessage(null)
+    try {
+      const result = await api.withdrawMyWallet()
+      setMessage({
+        type: 'success',
+        text: `Withdrawal requested (${result.payout_no}). The desk still needs to approve and pay it.`,
+      })
+      await load()
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err instanceof ApiError ? err.message : 'The withdrawal could not be requested.',
+      })
+    } finally {
+      setWithdrawing(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        Loading your wallet…
+      </div>
+    )
+  }
+
+  if (wallet === null) {
+    return null
+  }
+
+  const canWithdraw = wallet.due.total_due.paise > 0
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Your wallet</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            What you have earned and not yet been paid
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="tabular-nums text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+            {wallet.due.total_due.formatted}
+          </p>
+          <p className="text-[11px] text-slate-500">total owed to you</p>
+        </div>
+      </div>
+
+      <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
+          <dt className="text-slate-500">Unclaimed</dt>
+          <dd className="tabular-nums font-semibold text-slate-900 dark:text-white">
+            {wallet.due.unclaimed.formatted}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
+          <dt className="text-slate-500">Draft</dt>
+          <dd className="tabular-nums font-semibold text-slate-900 dark:text-white">
+            {wallet.due.draft.formatted}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50">
+          <dt className="text-slate-500">Approved</dt>
+          <dd className="tabular-nums font-semibold text-slate-900 dark:text-white">
+            {wallet.due.approved.formatted}
+          </dd>
+        </div>
+      </dl>
+
+      {message !== null && (
+        <div
+          className={`mt-3 rounded-lg p-2.5 text-xs font-medium ${
+            message.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+              : 'bg-rose-50 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
+
+      <button
+        onClick={() => void withdraw()}
+        disabled={!canWithdraw || withdrawing}
+        className="mt-3 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {withdrawing ? 'Requesting…' : canWithdraw ? 'Withdraw' : 'Nothing to withdraw yet'}
+      </button>
+
+      {wallet.history.length > 0 && (
+        <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Recent payouts
+          </p>
+          <div className="space-y-1.5">
+            {wallet.history.slice(0, 5).map((payout) => (
+              <div key={payout.id} className="flex items-center justify-between text-xs">
+                <div className="min-w-0">
+                  <span className="font-medium text-slate-900 dark:text-white">{payout.payout_no}</span>{' '}
+                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold capitalize text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {payout.status}
+                  </span>
+                </div>
+                <span className="tabular-nums text-slate-700 dark:text-slate-300">{payout.net.formatted}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   )
 }

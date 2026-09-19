@@ -665,40 +665,123 @@ class SettlementService
     /**
      * Record payment against an invoice.
      */
-    public function recordInvoicePayment(int $invoiceId, int $amountPaise, ?string $reference = null): array
-    {
+    public function recordInvoicePayment(
+        int $invoiceId,
+        int $amountPaise,
+        ?string $reference = null,
+        ?int $actorUserId = null,
+    ): array {
         $invoices = $this->fetchTable('CompanyInvoices');
-        $invoice = $invoices->get($invoiceId);
 
-        $paid = (int)$invoice->paid_paise + $amountPaise;
+        return $invoices->getConnection()->transactional(
+            function () use ($invoices, $invoiceId, $amountPaise, $reference, $actorUserId): array {
+                $invoice = $invoices->get($invoiceId);
 
-        $invoice->set('paid_paise', $paid);
-        $invoice->set('payment_reference', $reference);
+                $paid = (int)$invoice->paid_paise + $amountPaise;
 
-        // Part payment is normal in this trade and is not the same as
-        // settled, so the status distinguishes them rather than rounding
-        // up to "paid" and losing the outstanding balance.
-        if ($paid >= (int)$invoice->total_paise) {
-            $invoice->set('status', 'paid');
-            $invoice->set('paid_at', DateTime::now());
-        } else {
-            $invoice->set('status', 'partially_paid');
+                $invoice->set('paid_paise', $paid);
+                $invoice->set('payment_reference', $reference);
+
+                // Part payment is normal in this trade and is not the same as
+                // settled, so the status distinguishes them rather than rounding
+                // up to "paid" and losing the outstanding balance.
+                if ($paid >= (int)$invoice->total_paise) {
+                    $invoice->set('status', 'paid');
+                    $invoice->set('paid_at', DateTime::now());
+                } else {
+                    $invoice->set('status', 'partially_paid');
+                }
+
+                $invoices->saveOrFail($invoice);
+
+                if ($invoice->status === 'paid') {
+                    $this->fetchTable('TicketCharges')->updateAll(
+                        ['settlement_status' => 'paid'],
+                        [
+                            'id IN' => $this->fetchTable('CompanyInvoiceLines')->find()
+                                ->select(['ticket_charge_id'])
+                                ->where(['company_invoice_id' => $invoiceId, 'ticket_charge_id IS NOT' => null]),
+                        ],
+                    );
+                }
+
+                // Real cash landing, credited to whichever centre(s) earned
+                // the work behind this invoice. An invoice can span more
+                // than one centre's tickets, so a payment against it is
+                // split pro-rata by each centre's share of the billed
+                // lines — the only honest way to attribute one payment
+                // against work several branches did.
+                $savings = new SavingsService();
+                foreach ($this->splitPaymentAcrossCenters($invoiceId, $amountPaise) as $centerId => $share) {
+                    $savings->credit(
+                        $centerId,
+                        Money::fromPaise($share),
+                        'invoice_payment',
+                        $invoiceId,
+                        sprintf('Payment received against invoice %s', $invoice->invoice_no),
+                        $actorUserId,
+                    );
+                }
+
+                return ['ok' => true, 'paid_paise' => $paid, 'status' => $invoice->status];
+            },
+        );
+    }
+
+    /**
+     * How much of a payment against one invoice belongs to each service
+     * centre, in proportion to that centre's share of the invoice's
+     * ticket-linked lines.
+     *
+     * Lines with no ticket behind them (there are none today, but the
+     * column is nullable) are excluded from the weighting rather than
+     * guessed at, so the proportions are honest about what they are
+     * evidence for. The last centre absorbs the rounding remainder so the
+     * shares always sum to exactly the payment, never a paisa more or
+     * less.
+     *
+     * @return array<int, int> Service centre id => paise credited to it.
+     */
+    private function splitPaymentAcrossCenters(int $invoiceId, int $amountPaise): array
+    {
+        $rows = $this->fetchTable('CompanyInvoiceLines')->find()
+            ->select([
+                'service_center_id' => 'Tickets.service_center_id',
+                'subtotal' => 'SUM(CompanyInvoiceLines.amount_paise)',
+            ])
+            ->join(['Tickets' => [
+                'table' => 'tickets',
+                'type' => 'INNER',
+                'conditions' => 'Tickets.id = CompanyInvoiceLines.ticket_id',
+            ]])
+            ->where(['CompanyInvoiceLines.company_invoice_id' => $invoiceId])
+            ->groupBy('Tickets.service_center_id')
+            ->having('SUM(CompanyInvoiceLines.amount_paise) > 0')
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        $totalWeight = array_sum(array_map(fn (array $row): int => (int)$row['subtotal'], $rows));
+        if ($totalWeight <= 0 || $amountPaise <= 0) {
+            return [];
         }
 
-        $invoices->saveOrFail($invoice);
+        $shares = [];
+        $allocated = 0;
+        $lastIndex = count($rows) - 1;
 
-        if ($invoice->status === 'paid') {
-            $this->fetchTable('TicketCharges')->updateAll(
-                ['settlement_status' => 'paid'],
-                [
-                    'id IN' => $this->fetchTable('CompanyInvoiceLines')->find()
-                        ->select(['ticket_charge_id'])
-                        ->where(['company_invoice_id' => $invoiceId, 'ticket_charge_id IS NOT' => null]),
-                ],
-            );
+        foreach ($rows as $i => $row) {
+            $share = $i === $lastIndex
+                ? $amountPaise - $allocated
+                : (int)round($amountPaise * ((int)$row['subtotal'] / $totalWeight));
+            $allocated += $share;
+
+            if ($share > 0) {
+                $shares[(int)$row['service_center_id']] = $share;
+            }
         }
 
-        return ['ok' => true, 'paid_paise' => $paid, 'status' => $invoice->status];
+        return $shares;
     }
 
     /**
@@ -1158,25 +1241,50 @@ class SettlementService
         return ['ok' => true];
     }
 
-    public function markPayoutPaid(int $payoutId, string $method, ?string $reference = null): array
-    {
+    public function markPayoutPaid(
+        int $payoutId,
+        string $method,
+        ?string $reference = null,
+        ?int $actorUserId = null,
+    ): array {
         $payouts = $this->fetchTable('TechnicianPayouts');
-        $payout = $payouts->get($payoutId);
 
-        // Approval is a separate person's decision from payment on purpose;
-        // paying an unapproved run removes the only control on this ledger.
-        if ($payout->status !== 'approved') {
-            return ['ok' => false, 'errors' => ['payout' => ['This payout has not been approved yet.']]];
-        }
+        return $payouts->getConnection()->transactional(
+            function () use ($payouts, $payoutId, $method, $reference, $actorUserId): array {
+                $payout = $payouts->get($payoutId, contain: ['Technicians']);
 
-        $payout->set('status', 'paid');
-        $payout->set('paid_at', DateTime::now());
-        $payout->set('payment_method', $method);
-        $payout->set('payment_reference', $reference);
+                // Approval is a separate person's decision from payment on
+                // purpose; paying an unapproved run removes the only
+                // control on this ledger.
+                if ($payout->status !== 'approved') {
+                    return ['ok' => false, 'errors' => ['payout' => ['This payout has not been approved yet.']]];
+                }
 
-        $payouts->saveOrFail($payout);
+                $payout->set('status', 'paid');
+                $payout->set('paid_at', DateTime::now());
+                $payout->set('payment_method', $method);
+                $payout->set('payment_reference', $reference);
 
-        return ['ok' => true];
+                $payouts->saveOrFail($payout);
+
+                // Real cash leaving, debited from the technician's own
+                // centre. A technician belongs to exactly one centre, so
+                // — unlike an invoice payment — there is nothing to split.
+                $net = (int)$payout->net_paise;
+                if ($net > 0 && $payout->technician !== null) {
+                    (new SavingsService())->debit(
+                        (int)$payout->technician->service_center_id,
+                        Money::fromPaise($net),
+                        'technician_payout',
+                        $payout->id,
+                        sprintf('Payout %s paid to %s', $payout->payout_no, $payout->technician->name),
+                        $actorUserId,
+                    );
+                }
+
+                return ['ok' => true];
+            },
+        );
     }
 
     /**
@@ -1507,5 +1615,375 @@ class SettlementService
         }
 
         return $candidate->format('Y-m-d');
+    }
+
+    // -----------------------------------------------------------------
+    // profit & loss
+    // -----------------------------------------------------------------
+
+    /**
+     * Income, expenses and what the service centre kept, for tickets
+     * closed in the period.
+     *
+     * Scoped by `Tickets.closed_at` rather than `computed_at`: a charge is
+     * frozen at closure (see ChargeBuilder), so the two agree in practice,
+     * but closure is the date the business actually recognises the job by
+     * — the invoicing and payout runs already key off it, and this report
+     * is meant to explain the same period they settle.
+     *
+     * Every ledger is summed on its own sign: `company_receivable` already
+     * nets its SLA penalties, `company_payable` is the royalty we owe back
+     * as a positive magnitude. Income is the two inflow ledgers, expense
+     * the two outflow ledgers, and net margin is what is left — the "what
+     * did we save" figure, computed from the same frozen rows an invoice
+     * or a payout would be built from, not a separate estimate.
+     *
+     * @return array<string, mixed>
+     */
+    public function profitAndLoss(string $periodStart, string $periodEnd): array
+    {
+        $rows = $this->fetchTable('TicketCharges')->find()
+            ->select([
+                'ledger' => 'TicketCharges.ledger',
+                'line_type' => 'TicketCharges.line_type',
+                'amount' => 'SUM(TicketCharges.amount_paise)',
+                'tickets' => 'COUNT(DISTINCT TicketCharges.ticket_id)',
+            ])
+            ->join(['Tickets' => [
+                'table' => 'tickets',
+                'type' => 'INNER',
+                'conditions' => 'Tickets.id = TicketCharges.ticket_id',
+            ]])
+            ->where($this->pnlConditions($periodStart, $periodEnd))
+            ->groupBy(['TicketCharges.ledger', 'TicketCharges.line_type'])
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        $ledgerTotals = [
+            Ledger::CompanyReceivable->value => 0,
+            Ledger::CustomerCollection->value => 0,
+            Ledger::CompanyPayable->value => 0,
+            Ledger::TechnicianPayable->value => 0,
+        ];
+
+        $breakdown = [];
+        foreach ($rows as $row) {
+            $ledger = Ledger::from((string)$row['ledger']);
+            $lineType = ChargeLineType::from((string)$row['line_type']);
+            $amount = (int)$row['amount'];
+
+            $ledgerTotals[$ledger->value] += $amount;
+
+            $breakdown[] = [
+                'ledger' => $ledger->value,
+                'ledger_label' => $ledger->label(),
+                'is_inflow' => $ledger->isInflow(),
+                'line_type' => $lineType->value,
+                'line_type_label' => $lineType->label(),
+                'amount' => Money::fromPaise($amount)->jsonSerialize(),
+                'ticket_count' => (int)$row['tickets'],
+            ];
+        }
+
+        // Income first, largest first within each side — the shape a
+        // reader scans top to bottom expects: what we earned, then what it
+        // cost us, biggest lines leading each.
+        usort(
+            $breakdown,
+            fn (array $a, array $b): int => [$b['is_inflow'], $b['amount']['paise']]
+                <=> [$a['is_inflow'], $a['amount']['paise']],
+        );
+
+        $income = $ledgerTotals[Ledger::CompanyReceivable->value] + $ledgerTotals[Ledger::CustomerCollection->value];
+        $expenses = $ledgerTotals[Ledger::CompanyPayable->value] + $ledgerTotals[Ledger::TechnicianPayable->value];
+
+        $ticketCount = $this->fetchTable('TicketCharges')->find()
+            ->select(['tickets' => 'COUNT(DISTINCT TicketCharges.ticket_id)'])
+            ->join(['Tickets' => [
+                'table' => 'tickets',
+                'type' => 'INNER',
+                'conditions' => 'Tickets.id = TicketCharges.ticket_id',
+            ]])
+            ->where($this->pnlConditions($periodStart, $periodEnd))
+            ->disableHydration()
+            ->first();
+
+        return [
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
+            'ticket_count' => (int)($ticketCount['tickets'] ?? 0),
+            'income' => [
+                'company_receivable' => Money::fromPaise($ledgerTotals[Ledger::CompanyReceivable->value])
+                    ->jsonSerialize(),
+                'customer_collection' => Money::fromPaise($ledgerTotals[Ledger::CustomerCollection->value])
+                    ->jsonSerialize(),
+                'total' => Money::fromPaise($income)->jsonSerialize(),
+            ],
+            'expenses' => [
+                'company_payable' => Money::fromPaise($ledgerTotals[Ledger::CompanyPayable->value])
+                    ->jsonSerialize(),
+                'technician_payable' => Money::fromPaise($ledgerTotals[Ledger::TechnicianPayable->value])
+                    ->jsonSerialize(),
+                'total' => Money::fromPaise($expenses)->jsonSerialize(),
+            ],
+            'net_margin' => Money::fromPaise($income - $expenses)->jsonSerialize(),
+            'breakdown' => $breakdown,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pnlConditions(string $periodStart, string $periodEnd): array
+    {
+        return [
+            'TicketCharges.is_frozen' => true,
+            'Tickets.closed_at >=' => $periodStart . ' 00:00:00',
+            'Tickets.closed_at <=' => $periodEnd . ' 23:59:59',
+        ];
+    }
+
+    // -----------------------------------------------------------------
+    // technician dues
+    // -----------------------------------------------------------------
+
+    /**
+     * What every technician is owed, split by how far along it is towards
+     * being paid.
+     *
+     * Mirrors `receivables()` on the company side, for the same reason:
+     * work closed but not yet on any payout run is real money owed and
+     * invisible on a payout list, which only shows runs that have already
+     * been raised. Technicians are paid on demand rather than on a fixed
+     * cycle here, so "how much would a payout raised today pay them" is
+     * the number that actually gets asked.
+     *
+     * @return array<string, mixed>
+     */
+    public function technicianDues(?string $asOf = null): array
+    {
+        $asOf = $asOf ?? DateTime::now()->format('Y-m-d');
+
+        $technicians = $this->fetchTable('Technicians')->find()
+            ->select(['id', 'code', 'name', 'is_active'])
+            ->where(['is_active' => true])
+            ->orderByAsc('name')
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        $unclaimed = $this->unclaimedByTechnician();
+        $payoutRows = $this->payoutRowsByTechnician();
+
+        $out = [];
+        foreach ($technicians as $technician) {
+            $out[] = $this->technicianDueRow($technician, $unclaimed, $payoutRows);
+        }
+
+        return [
+            'as_of' => $asOf,
+            'technicians' => $out,
+            'totals' => $this->sumTechnicianDues($out),
+        ];
+    }
+
+    /**
+     * One technician's own dues — the same row `technicianDues()` builds
+     * for everyone, for the wallet screen they see themselves.
+     *
+     * @return array<string, mixed>
+     */
+    public function technicianDue(int $technicianId, ?string $asOf = null): array
+    {
+        $asOf = $asOf ?? DateTime::now()->format('Y-m-d');
+
+        $technician = $this->fetchTable('Technicians')->find()
+            ->select(['id', 'code', 'name'])
+            ->where(['id' => $technicianId])
+            ->disableHydration()
+            ->firstOrFail();
+
+        return array_merge(
+            ['as_of' => $asOf],
+            $this->technicianDueRow($technician, $this->unclaimedByTechnician(), $this->payoutRowsByTechnician()),
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $technician
+     * @param array<int, array{amount: int, tickets: int}> $unclaimed
+     * @param array<int, list<array<string, mixed>>> $payoutRows
+     * @return array<string, mixed>
+     */
+    private function technicianDueRow(array $technician, array $unclaimed, array $payoutRows): array
+    {
+        $technicianId = (int)$technician['id'];
+
+        $unclaimedAmount = $unclaimed[$technicianId]['amount'] ?? 0;
+        $unclaimedTickets = $unclaimed[$technicianId]['tickets'] ?? 0;
+
+        $draft = 0;
+        $approved = 0;
+        $paid = 0;
+        $payoutCount = 0;
+        $pendingPayoutCount = 0;
+
+        foreach ($payoutRows[$technicianId] ?? [] as $row) {
+            $payoutCount++;
+            $net = (int)$row['net_paise'];
+
+            if ($row['status'] === 'draft') {
+                $draft += $net;
+                $pendingPayoutCount++;
+            } elseif ($row['status'] === 'approved') {
+                $approved += $net;
+                $pendingPayoutCount++;
+            } elseif ($row['status'] === 'paid') {
+                $paid += $net;
+            }
+        }
+
+        return [
+            'technician' => [
+                'id' => $technicianId,
+                'code' => $technician['code'],
+                'name' => $technician['name'],
+            ],
+            // Frozen work not yet claimed by any payout run.
+            'unclaimed' => Money::fromPaise($unclaimedAmount)->jsonSerialize(),
+            'unclaimed_ticket_count' => $unclaimedTickets,
+            'draft' => Money::fromPaise($draft)->jsonSerialize(),
+            'approved' => Money::fromPaise($approved)->jsonSerialize(),
+            // Everything not yet paid, whatever stage it has reached — the
+            // single number for "what would it cost to settle up".
+            'total_due' => Money::fromPaise($unclaimedAmount + $draft + $approved)->jsonSerialize(),
+            'paid' => Money::fromPaise($paid)->jsonSerialize(),
+            'payout_count' => $payoutCount,
+            'pending_payout_count' => $pendingPayoutCount,
+        ];
+    }
+
+    /**
+     * Frozen technician-side lines not yet claimed by any payout, per
+     * technician.
+     *
+     * @return array<int, array{amount: int, tickets: int}>
+     */
+    private function unclaimedByTechnician(): array
+    {
+        $claimed = $this->fetchTable('TechnicianPayoutLines')->find()
+            ->select(['ticket_charge_id'])
+            ->where(['ticket_charge_id IS NOT' => null]);
+
+        $rows = $this->fetchTable('TicketCharges')->find()
+            ->select([
+                'technician_id' => 'Tickets.assigned_technician_id',
+                'amount' => 'SUM(TicketCharges.amount_paise)',
+                'tickets' => 'COUNT(DISTINCT TicketCharges.ticket_id)',
+            ])
+            ->join(['Tickets' => [
+                'table' => 'tickets',
+                'type' => 'INNER',
+                'conditions' => 'Tickets.id = TicketCharges.ticket_id',
+            ]])
+            ->where([
+                'TicketCharges.is_frozen' => true,
+                'TicketCharges.ledger' => Ledger::TechnicianPayable->value,
+                'TicketCharges.id NOT IN' => $claimed,
+                'Tickets.assigned_technician_id IS NOT' => null,
+            ])
+            ->groupBy('Tickets.assigned_technician_id')
+            ->disableHydration()
+            ->all();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int)$row['technician_id']] = [
+                'amount' => (int)$row['amount'],
+                'tickets' => (int)$row['tickets'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Every payout that still owes or has paid money, grouped by
+     * technician. Cancelled runs are excluded — they claim nothing.
+     *
+     * @return array<int, list<array<string, mixed>>>
+     */
+    private function payoutRowsByTechnician(): array
+    {
+        $rows = $this->fetchTable('TechnicianPayouts')->find()
+            ->select(['technician_id', 'status', 'net_paise'])
+            ->where(['status IN' => ['draft', 'approved', 'paid']])
+            ->disableHydration()
+            ->all();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int)$row['technician_id']][] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $technicians
+     * @return array<string, mixed>
+     */
+    private function sumTechnicianDues(array $technicians): array
+    {
+        $keys = ['unclaimed', 'draft', 'approved', 'total_due', 'paid'];
+        $sums = array_fill_keys($keys, 0);
+        $tickets = 0;
+
+        foreach ($technicians as $technician) {
+            foreach ($keys as $key) {
+                $sums[$key] += (int)$technician[$key]['paise'];
+            }
+            $tickets += (int)$technician['unclaimed_ticket_count'];
+        }
+
+        $out = ['unclaimed_ticket_count' => $tickets];
+        foreach ($keys as $key) {
+            $out[$key] = Money::fromPaise($sums[$key])->jsonSerialize();
+        }
+
+        return $out;
+    }
+
+    /**
+     * One technician's own payout runs, newest first — the history behind
+     * their wallet balance.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function payoutHistoryForTechnician(int $technicianId, int $limit = 20): array
+    {
+        $payouts = $this->fetchTable('TechnicianPayouts')->find()
+            ->select(['id', 'payout_no', 'status', 'period_start', 'period_end', 'net_paise', 'paid_at', 'created'])
+            ->where(['technician_id' => $technicianId])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        return array_map(
+            fn (array $row): array => [
+                'id' => (int)$row['id'],
+                'payout_no' => $row['payout_no'],
+                'status' => $row['status'],
+                'period_start' => $row['period_start']->format('Y-m-d'),
+                'period_end' => $row['period_end']->format('Y-m-d'),
+                'net' => Money::fromPaise((int)$row['net_paise'])->jsonSerialize(),
+                'paid_at' => $row['paid_at']?->format('Y-m-d H:i:s'),
+                'created' => $row['created']->format('Y-m-d H:i:s'),
+            ],
+            $payouts,
+        );
     }
 }

@@ -204,6 +204,31 @@ return function (RouteBuilder $routes): void {
         // list at all, so it cannot be chased from one.
         $builder->get('/receivables', ['controller' => 'Settlement', 'action' => 'receivables', 'prefix' => 'Api']);
 
+        // The same question on the technician side: what has been earned
+        // but not yet claimed by a payout run.
+        $builder->get('/technician-dues', ['controller' => 'Settlement', 'action' => 'technicianDues', 'prefix' => 'Api']);
+
+        // Income, expenses and net margin for a period — what the service
+        // centre actually kept.
+        $builder->get('/reports/profit-loss', ['controller' => 'Settlement', 'action' => 'profitAndLoss', 'prefix' => 'Api']);
+
+        // ---- the service centre's own cash position --------------
+        // A different figure from the P&L above: this only moves when
+        // cash genuinely does — an invoice payment landing, a technician
+        // payout actually being paid, or a desk correction.
+        $builder->get('/service-centers/savings', ['controller' => 'Savings', 'action' => 'balances', 'prefix' => 'Api']);
+        $builder->get('/service-centers/{id}/savings', ['controller' => 'Savings', 'action' => 'balance', 'prefix' => 'Api']);
+        $builder->post('/service-centers/{id}/savings/adjust', [
+            'controller' => 'Savings', 'action' => 'adjustSavings', 'prefix' => 'Api',
+        ]);
+
+        // ---- a technician's own wallet ----------------------------
+        // Self-scoped to whoever is signed in — see WalletController for
+        // why that check lives in the controller rather than a shared
+        // authorization layer.
+        $builder->get('/wallet/me', ['controller' => 'Wallet', 'action' => 'me', 'prefix' => 'Api']);
+        $builder->post('/wallet/me/withdraw', ['controller' => 'Wallet', 'action' => 'withdraw', 'prefix' => 'Api']);
+
         // ---- settlement -----------------------------------------
         // Both runs copy charge lines frozen at closure. Neither prices
         // anything, which is what keeps an invoice agreeing with the

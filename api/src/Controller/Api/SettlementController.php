@@ -27,6 +27,7 @@ class SettlementController extends ApiController
         $this->Authentication->allowUnauthenticated([
             'invoices', 'invoice', 'previewInvoice', 'payouts', 'payout',
             'creditExposure', 'receivables', 'defectiveReturns', 'spareAgeing',
+            'profitAndLoss', 'technicianDues',
         ]);
     }
 
@@ -235,6 +236,7 @@ class SettlementController extends ApiController
             (int)$id,
             $amount,
             $this->request->getData('reference'),
+            $this->currentUserId(),
         );
 
         return $this->respond($result);
@@ -267,6 +269,38 @@ class SettlementController extends ApiController
         $asOf = $this->request->getQuery('as_of');
 
         return $this->respond((new SettlementService())->receivables(
+            is_string($asOf) && $asOf !== '' ? $asOf : null,
+        ));
+    }
+
+    // -----------------------------------------------------------------
+    // profit & loss
+    // -----------------------------------------------------------------
+
+    /**
+     * GET /api/reports/profit-loss
+     *
+     * Income, expenses and net margin for tickets closed in the period —
+     * defaults to last calendar month, same as an invoice or payout run.
+     */
+    public function profitAndLoss(): Response
+    {
+        [$start, $end] = $this->period();
+
+        return $this->respond((new SettlementService())->profitAndLoss($start, $end));
+    }
+
+    /**
+     * GET /api/technician-dues
+     *
+     * What every technician is owed right now, whether or not a payout
+     * has been raised for it yet.
+     */
+    public function technicianDues(): Response
+    {
+        $asOf = $this->request->getQuery('as_of');
+
+        return $this->respond((new SettlementService())->technicianDues(
             is_string($asOf) && $asOf !== '' ? $asOf : null,
         ));
     }
@@ -441,6 +475,7 @@ class SettlementController extends ApiController
             (int)$id,
             $method,
             $this->request->getData('reference'),
+            $this->currentUserId(),
         );
 
         if ($result['ok'] === false) {

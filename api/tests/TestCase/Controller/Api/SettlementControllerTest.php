@@ -79,4 +79,29 @@ class SettlementControllerTest extends TestCase
         $this->assertResponseError();
         $this->assertResponseNotContains('Controller class Settlement could not be found');
     }
+
+    /**
+     * The shape a P&L report always has, even with nothing closed in the
+     * period: income and expenses each present, net margin computed from
+     * them. The arithmetic itself is covered by the domain tests.
+     */
+    public function testProfitAndLossReturnsIncomeAndExpenseTotals(): void
+    {
+        $this->get('/api/reports/profit-loss?period_start=2000-01-01&period_end=2000-01-31');
+
+        $this->assertResponseOk();
+        $this->assertResponseContains('"income"');
+        $this->assertResponseContains('"expenses"');
+        $this->assertResponseContains('"net_margin"');
+        $this->assertResponseContains('"breakdown"');
+    }
+
+    public function testTechnicianDuesRouteExists(): void
+    {
+        $this->get('/api/technician-dues');
+
+        $this->assertResponseOk();
+        $this->assertResponseContains('"technicians"');
+        $this->assertResponseContains('"totals"');
+    }
 }
