@@ -42,7 +42,7 @@ class CompaniesController extends ApiController
             'index', 'view', 'settings', 'masterLists', 'rateCards', 'rateCard', 'settingCatalog',
             'add', 'edit', 'delete', 'createRateCard', 'addRateCardItem', 'addSlaRule', 'publishRateCard',
             'deleteRateCardItem', 'deleteSlaRule', 'rateCardItemsTemplate', 'importRateCardItems',
-            'mergeRateCardItemDuplicates',
+            'mergeRateCardItemDuplicates', 'deleteRateCard',
         ]);
     }
 
@@ -515,6 +515,25 @@ class CompaniesController extends ApiController
             'status' => 'active',
             'superseded_rate_card_id' => $result['superseded'],
         ]);
+    }
+
+    /**
+     * DELETE /api/companies/{id}/rate-cards/{cardId}
+     *
+     * Draft only — publishing is one-way, and deleting a card that has
+     * already priced tickets would orphan every line that referenced it.
+     */
+    public function deleteRateCard(?string $id = null, ?string $cardId = null): Response
+    {
+        $cardId = $this->routeParam('card_id', $cardId);
+
+        try {
+            (new RateCardAuthoring())->removeCard((int)$cardId);
+        } catch (RateCardLockedException $e) {
+            return $this->fail('rate_card_locked', $e->getMessage(), 409);
+        }
+
+        return $this->respond(['deleted' => true]);
     }
 
     /**

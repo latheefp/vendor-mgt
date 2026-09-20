@@ -99,6 +99,77 @@ class SettingsControllersTest extends TestCase
         $this->assertGreaterThan(0, $itemId);
     }
 
+    public function testDeleteRateCardRemovesDraftAndItsItems(): void
+    {
+        $companies = \Cake\ORM\TableRegistry::getTableLocator()->get('Companies');
+        $company = $companies->find()->first();
+        if ($company === null) {
+            $company = $companies->newEntity(['code' => 'TEST', 'name' => 'Test Company', 'is_active' => true]);
+            $companies->saveOrFail($company);
+        }
+
+        $jobTypes = \Cake\ORM\TableRegistry::getTableLocator()->get('JobTypes');
+        $jobType = $jobTypes->find()->first();
+        if ($jobType === null) {
+            $jobType = $jobTypes->newEntity(['code' => 'service', 'name' => 'Service', 'is_active' => true]);
+            $jobTypes->saveOrFail($jobType);
+        }
+
+        $cards = \Cake\ORM\TableRegistry::getTableLocator()->get('RateCards');
+        $card = $cards->newEntity([
+            'company_id' => $company->id,
+            'name' => 'Draft To Delete',
+            'version' => 98,
+            'status' => 'draft',
+            'effective_from' => date('Y-m-d'),
+            'currency' => 'INR',
+        ]);
+        $cards->saveOrFail($card);
+
+        $authoring = new \App\Service\RateCardAuthoring();
+        $itemId = $authoring->addItem((int)$card->id, [
+            'job_type_id' => $jobType->id,
+            'warranty_scope' => 'in_warranty',
+            'amount_paise' => 40000,
+            'payer' => 'company',
+        ]);
+
+        $this->enableCsrfToken('gvsCsrfToken');
+        $this->delete(sprintf('/api/companies/%d/rate-cards/%d', $company->id, $card->id));
+        $this->assertResponseOk();
+
+        $this->assertNull($cards->find()->where(['id' => $card->id])->first());
+        $items = \Cake\ORM\TableRegistry::getTableLocator()->get('RateCardItems');
+        $this->assertNull($items->find()->where(['id' => $itemId])->first());
+    }
+
+    public function testDeleteRateCardRefusesPublishedCard(): void
+    {
+        $companies = \Cake\ORM\TableRegistry::getTableLocator()->get('Companies');
+        $company = $companies->find()->first();
+        if ($company === null) {
+            $company = $companies->newEntity(['code' => 'TEST', 'name' => 'Test Company', 'is_active' => true]);
+            $companies->saveOrFail($company);
+        }
+
+        $cards = \Cake\ORM\TableRegistry::getTableLocator()->get('RateCards');
+        $card = $cards->newEntity([
+            'company_id' => $company->id,
+            'name' => 'Published Card',
+            'version' => 97,
+            'status' => 'active',
+            'effective_from' => date('Y-m-d'),
+            'currency' => 'INR',
+        ]);
+        $cards->saveOrFail($card);
+
+        $this->enableCsrfToken('gvsCsrfToken');
+        $this->delete(sprintf('/api/companies/%d/rate-cards/%d', $company->id, $card->id));
+        $this->assertResponseError();
+
+        $this->assertNotNull($cards->find()->where(['id' => $card->id])->first());
+    }
+
     public function testImportRateCardItemsSkipsBadRowsAndSavesGoodOnes(): void
     {
         $companies = \Cake\ORM\TableRegistry::getTableLocator()->get('Companies');

@@ -439,6 +439,21 @@ class RateCardAuthoring
     }
 
     /**
+     * Delete a draft card outright — items and SLA rules cascade with it.
+     *
+     * Only a draft can go this way. A published card is load-bearing for
+     * every invoice it priced, and superseded is what a published card
+     * becomes, not a state to erase your way out of.
+     */
+    public function removeCard(int $cardId): void
+    {
+        $this->assertDraft($cardId);
+
+        $cards = $this->fetchTable('RateCards');
+        $cards->deleteOrFail($cards->get($cardId));
+    }
+
+    /**
      * Add an SLA bonus or penalty rule to a draft card.
      *
      * @param array<string, mixed> $data

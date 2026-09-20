@@ -693,6 +693,8 @@ export const api = {
     request<{ deleted: boolean }>(`/companies/${companyId}/rate-cards/${cardId}/sla-rules/${ruleId}`, { method: 'DELETE' }),
   publishRateCard: (companyId: number, cardId: number, ignoreWarnings?: string[]) =>
     request<Record<string, unknown>>(`/companies/${companyId}/rate-cards/${cardId}/publish`, { method: 'POST', body: { ignore_warnings: ignoreWarnings } }),
+  deleteRateCard: (companyId: number, cardId: number) =>
+    request<{ deleted: boolean }>(`/companies/${companyId}/rate-cards/${cardId}`, { method: 'DELETE' }),
 
   /** Triggers a browser download of the CSV template for bulk-adding rate
    *  items, pre-filled with this company's job type and appliance codes. */

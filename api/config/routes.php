@@ -153,6 +153,7 @@ return function (RouteBuilder $routes): void {
         $builder->post('/companies/{id}/rate-cards/{card_id}/sla-rules', ['controller' => 'Companies', 'action' => 'addSlaRule', 'prefix' => 'Api']);
         $builder->delete('/companies/{id}/rate-cards/{card_id}/sla-rules/{rule_id}', ['controller' => 'Companies', 'action' => 'deleteSlaRule', 'prefix' => 'Api']);
         $builder->post('/companies/{id}/rate-cards/{card_id}/publish', ['controller' => 'Companies', 'action' => 'publishRateCard', 'prefix' => 'Api']);
+        $builder->delete('/companies/{id}/rate-cards/{card_id}', ['controller' => 'Companies', 'action' => 'deleteRateCard', 'prefix' => 'Api']);
 
         // ---- users management -----------------------------------
         $builder->get('/users', ['controller' => 'Users', 'action' => 'index', 'prefix' => 'Api']);

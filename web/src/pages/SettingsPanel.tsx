@@ -2010,6 +2010,20 @@ function RateCardsTab() {
     }
   }
 
+  const handleDeleteRateCard = async () => {
+    if (!selectedCompanyId || !card) return
+    if (!confirm(`Delete "${card.name || 'Rate Card'}" (v${card.version})? This removes its priced lines and SLA rules too — it cannot be undone.`)) return
+    setMessage(null)
+
+    try {
+      await api.deleteRateCard(selectedCompanyId, card.id)
+      setMessage({ type: 'success', text: `Rate Card v${card.version} deleted` })
+      await reloadRateCards(selectedCompanyId)
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to delete rate card' })
+    }
+  }
+
   const handleDeleteItem = async (itemId: number) => {
     if (!selectedCompanyId || !card) return
     if (!confirm('Remove this priced line item from the draft rate card?')) return
@@ -2121,12 +2135,20 @@ function RateCardsTab() {
               </div>
               <div className="flex items-center gap-3">
                 {card.status === 'draft' && (
-                  <button
-                    onClick={handlePublishCard}
-                    className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                  >
-                    Publish Rate Card
-                  </button>
+                  <>
+                    <button
+                      onClick={handleDeleteRateCard}
+                      className="rounded-lg border border-rose-300 px-4 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                    >
+                      Delete Draft
+                    </button>
+                    <button
+                      onClick={handlePublishCard}
+                      className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                    >
+                      Publish Rate Card
+                    </button>
+                  </>
                 )}
                 {card.status === 'active' && (
                   <span className="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
