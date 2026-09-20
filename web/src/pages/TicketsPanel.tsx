@@ -139,6 +139,9 @@ export function TicketsPanel() {
   const [commentBody, setCommentBody] = useState('')
   const [commentVisibility, setCommentVisibility] = useState<'internal' | 'company' | 'customer'>('internal')
   const [ledger, setLedger] = useState<TicketLedger | null>(null)
+  const [boqItems, setBoqItems] = useState<Array<{ id: number; label: string; amount: number }>>([])
+  const [selectedBoqItemId, setSelectedBoqItemId] = useState<number | null>(null)
+  const [boqLedger, setBoqLedger] = useState('company_receivable')
   const [statusMoves, setStatusMoves] = useState<string[]>([])
   const [holdReasonId, setHoldReasonId] = useState('')
   const [resolutionId, setResolutionId] = useState('')
@@ -237,6 +240,43 @@ export function TicketsPanel() {
     setCloseErrors({})
     setMessage(null)
   }, [selectedTicket?.id])
+
+  // BOQ dropdown mirrors whatever the company's active rate card actually
+  // contains — an empty or unpublished card means an empty dropdown, not a
+  // generic placeholder list.
+  useEffect(() => {
+    const companyId = selectedTicket?.company_id
+    if (companyId === undefined) {
+      setBoqItems([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const cards = await api.listRateCards(companyId)
+        const activeCard = cards.find((c) => c.status === 'active')
+        if (!activeCard) {
+          if (!cancelled) setBoqItems([])
+          return
+        }
+        const detail = await api.getRateCard(companyId, activeCard.id as number)
+        const items = (detail.items as Array<Record<string, unknown>>) ?? []
+        const active = items
+          .filter((item) => item.is_active !== false)
+          .map((item) => ({
+            id: item.id as number,
+            label: (item.label as string) || ((item.job_type as { name?: string } | null)?.name ?? 'Service'),
+            amount: (item.amount_paise as number) / 100,
+          }))
+        if (!cancelled) setBoqItems(active)
+      } catch {
+        if (!cancelled) setBoqItems([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTicket?.company_id])
 
   const loadOptions = async (companyId?: number) => {
     try {
@@ -771,16 +811,15 @@ export function TicketsPanel() {
    * ticket — a frozen `in_progress` job refuses parts and refuses closure.
    */
   const handleAddServiceLine = async () => {
-    if (selectedTicket === null) return
+    if (selectedTicket === null || selectedBoqItemId === null) return
 
     setSubmitting(true)
     try {
       await api.addTicketServiceLine(selectedTicket.id, {
-        ledger: adjustment.ledger,
-        amount: adjustment.amount,
-        description: adjustment.reason,
+        ledger: boqLedger,
+        rate_card_item_id: selectedBoqItemId,
       })
-      setAdjustment({ ledger: adjustment.ledger, amount: '', reason: '' })
+      setSelectedBoqItemId(null)
       await loadTicketDetail(selectedTicket.id)
       setMessage({ type: 'success', text: 'Service line added. It will be billed when the ticket closes.' })
     } catch (err) {
@@ -2733,65 +2772,82 @@ export function TicketsPanel() {
                     <span className="text-[11px] text-slate-500">
                       {ledger.freeze !== null
                         ? 'Appended as a correction; use a negative amount to reduce'
-                        : 'Pick from BOQ services or enter custom amount'}
+                        : "Priced from the company's active rate card"}
                     </span>
                   </div>
 
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <select
-                      onChange={(e) => {
-                        const val = e.target.value
-                        if (!val) return
-                        const [name, price] = val.split('|')
-                        setAdjustment({
-                          ledger: 'company_receivable',
-                          reason: name,
-                          amount: price,
-                        })
-                      }}
-                      className="min-w-60 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    >
-                      <option value="">Select Rate Card Item / Service (BOQ)…</option>
-                      <option value="Basic Service Charge|400">Basic Service Charge — ₹400</option>
-                      <option value="Display / Panel Service Charge|600">Display / Panel Service Charge — ₹600</option>
-                      <option value="PCB / Motherboard Service Charge|850">PCB / Motherboard Service Charge — ₹850</option>
-                      <option value="Gas Refilling & Leak Repair|1200">Gas Refilling & Leak Repair — ₹1,200</option>
-                      <option value="General Inspection & Diagnostic Fee|300">General Inspection & Diagnostic Fee — ₹300</option>
-                      <option value="Compressor Servicing Fee|1500">Compressor Servicing Fee — ₹1,500</option>
-                    </select>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={adjustment.ledger}
-                      onChange={(e) => setAdjustment({ ...adjustment, ledger: e.target.value })}
-                      className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    >
-                      <option value="company_receivable">Company receivable</option>
-                      <option value="customer_collection">Customer collection</option>
-                      <option value="company_payable">Payable to company</option>
-                      <option value="technician_payable">Payable to technician</option>
-                    </select>
-                    <input
-                      value={adjustment.amount}
-                      onChange={(e) => setAdjustment({ ...adjustment, amount: e.target.value })}
-                      placeholder="400.00"
-                      className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-xs tabular-nums dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                    <input
-                      value={adjustment.reason}
-                      onChange={(e) => setAdjustment({ ...adjustment, reason: e.target.value })}
-                      placeholder="Service / BOQ item description"
-                      className="min-w-40 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                    <button
-                      onClick={() => void (ledger.freeze !== null ? handleAddAdjustment() : handleAddServiceLine())}
-                      disabled={submitting || adjustment.amount.trim() === '' || adjustment.reason.trim() === ''}
-                      className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      {ledger.freeze !== null ? '+ Add Adjustment' : '+ Add Service Line (BOQ)'}
-                    </button>
-                  </div>
+                  {ledger.freeze === null ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={selectedBoqItemId ?? ''}
+                        disabled={boqItems.length === 0}
+                        onChange={(e) =>
+                          setSelectedBoqItemId(e.target.value === '' ? null : Number(e.target.value))
+                        }
+                        className="min-w-60 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-medium disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      >
+                        <option value="">
+                          {boqItems.length === 0
+                            ? 'No active rate card items for this company'
+                            : 'Select Rate Card Item / Service (BOQ)…'}
+                        </option>
+                        {boqItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label} — ₹{item.amount.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={boqLedger}
+                        onChange={(e) => setBoqLedger(e.target.value)}
+                        className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      >
+                        <option value="company_receivable">Company receivable</option>
+                        <option value="customer_collection">Customer collection</option>
+                        <option value="company_payable">Payable to company</option>
+                        <option value="technician_payable">Payable to technician</option>
+                      </select>
+                      <button
+                        onClick={() => void handleAddServiceLine()}
+                        disabled={submitting || selectedBoqItemId === null}
+                        className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        + Add Service Line (BOQ)
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={adjustment.ledger}
+                        onChange={(e) => setAdjustment({ ...adjustment, ledger: e.target.value })}
+                        className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      >
+                        <option value="company_receivable">Company receivable</option>
+                        <option value="customer_collection">Customer collection</option>
+                        <option value="company_payable">Payable to company</option>
+                        <option value="technician_payable">Payable to technician</option>
+                      </select>
+                      <input
+                        value={adjustment.amount}
+                        onChange={(e) => setAdjustment({ ...adjustment, amount: e.target.value })}
+                        placeholder="400.00"
+                        className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-xs tabular-nums dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+                      <input
+                        value={adjustment.reason}
+                        onChange={(e) => setAdjustment({ ...adjustment, reason: e.target.value })}
+                        placeholder="Reason for this correction"
+                        className="min-w-40 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+                      <button
+                        onClick={() => void handleAddAdjustment()}
+                        disabled={submitting || adjustment.amount.trim() === '' || adjustment.reason.trim() === ''}
+                        className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        + Add Adjustment
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

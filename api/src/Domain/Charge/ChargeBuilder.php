@@ -323,17 +323,22 @@ final readonly class ChargeBuilder
      * Collapsing them would make every corrected invoice indistinguishable
      * from a job that simply had extra work on it.
      */
+    /**
+     * @param array<string, int|null> $sourceRefs
+     */
     public function boqLine(
         Ledger $ledger,
         Money $amount,
         string $description,
         ?int $agreedByUserId = null,
+        array $sourceRefs = [],
     ): ChargeLine {
         return new ChargeLine(
             type: ChargeLineType::Boq,
             ledger: $ledger,
             description: $description,
             amount: $amount,
+            sourceRefs: $sourceRefs,
             snapshot: [
                 'description' => $description,
                 'agreed_by_user_id' => $agreedByUserId,

@@ -33,6 +33,10 @@ class TicketChargeLineTest extends TestCase
     private TicketAdjustmentService $charges;
     private int $companyId;
     private int $ticketId;
+    private int $jobTypeId;
+    private int $rateCardItemId;
+    private int $zeroRateCardItemId;
+    private int $otherCompanyRateCardItemId;
 
     public function setUp(): void
     {
@@ -42,6 +46,7 @@ class TicketChargeLineTest extends TestCase
 
         $this->charges = new TicketAdjustmentService();
         $this->ticketId = $this->seedTicket();
+        $this->seedRateCardItems();
     }
 
     public function tearDown(): void
@@ -57,13 +62,14 @@ class TicketChargeLineTest extends TestCase
 
     public function testServiceLineIsAcceptedOnAnOpenTicket(): void
     {
-        $result = $this->addServiceLine('1200', 'Gas refilling');
+        $result = $this->addServiceLine($this->rateCardItemId);
 
         $this->assertTrue($result['ok']);
 
         $line = $this->fetchTable('TicketCharges')->get($result['charge_id']);
         $this->assertSame(ChargeLineType::Boq->value, $line->line_type);
         $this->assertSame(120000, (int)$line->amount_paise);
+        $this->assertSame($this->rateCardItemId, (int)$line->rate_card_item_id);
     }
 
     /**
@@ -73,7 +79,7 @@ class TicketChargeLineTest extends TestCase
      */
     public function testAddingAServiceLineDoesNotFreezeTheTicket(): void
     {
-        $this->addServiceLine('1200', 'Gas refilling');
+        $this->addServiceLine($this->rateCardItemId);
 
         $ticket = $this->fetchTable('Tickets')->get($this->ticketId);
 
@@ -85,7 +91,7 @@ class TicketChargeLineTest extends TestCase
     {
         $this->freezeCharges();
 
-        $result = $this->addServiceLine('1200', 'Gas refilling');
+        $result = $this->addServiceLine($this->rateCardItemId);
 
         $this->assertFalse($result['ok']);
         $this->assertSame('frozen', $result['code']);
@@ -97,17 +103,36 @@ class TicketChargeLineTest extends TestCase
         );
     }
 
-    public function testServiceLineNeedsADescription(): void
+    public function testServiceLineNeedsARateCardItem(): void
     {
-        $result = $this->addServiceLine('1200', '');
+        $result = $this->addServiceLine(null);
 
         $this->assertFalse($result['ok']);
-        $this->assertArrayHasKey('description', $result['errors']);
+        $this->assertArrayHasKey('rate_card_item_id', $result['errors']);
     }
 
-    public function testServiceLineRefusesZero(): void
+    /**
+     * Rates come from the rate card only: an amount typed by the desk, or
+     * an item belonging to a different company's card, is refused rather
+     * than trusted.
+     */
+    public function testServiceLineRefusesAnItemNotOnThisCompanysActiveCard(): void
     {
-        $result = $this->addServiceLine('0', 'Gas refilling');
+        $result = $this->addServiceLine($this->otherCompanyRateCardItemId);
+
+        $this->assertFalse($result['ok']);
+        $this->assertArrayHasKey('rate_card_item_id', $result['errors']);
+        $this->assertSame(
+            0,
+            $this->fetchTable('TicketCharges')->find()
+                ->where(['ticket_id' => $this->ticketId])
+                ->count(),
+        );
+    }
+
+    public function testServiceLineRefusesAZeroPricedItem(): void
+    {
+        $result = $this->addServiceLine($this->zeroRateCardItemId);
 
         $this->assertFalse($result['ok']);
         $this->assertArrayHasKey('amount', $result['errors']);
@@ -193,12 +218,11 @@ class TicketChargeLineTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function addServiceLine(string $amount, string $description): array
+    private function addServiceLine(?int $rateCardItemId): array
     {
         return $this->charges->addServiceLine($this->ticketId, [
             'ledger' => 'company_receivable',
-            'amount' => $amount,
-            'description' => $description,
+            'rate_card_item_id' => $rateCardItemId,
         ]);
     }
 
@@ -244,6 +268,7 @@ class TicketChargeLineTest extends TestCase
             'name' => 'BOQ test call',
         ], ['validate' => false]);
         $jobTypes->saveOrFail($jobType);
+        $this->jobTypeId = (int)$jobType->id;
 
         $tickets = $this->fetchTable('Tickets');
         $ticket = $tickets->newEntity([
@@ -261,5 +286,78 @@ class TicketChargeLineTest extends TestCase
         $tickets->saveOrFail($ticket, ['checkRules' => false]);
 
         return (int)$ticket->id;
+    }
+
+    /**
+     * An active rate card for the ticket's company (with a priced item and
+     * a zero-priced one), plus an active card for a second, unrelated
+     * company — so tests can prove an item is scoped to its own company.
+     */
+    private function seedRateCardItems(): void
+    {
+        $rateCards = $this->fetchTable('RateCards');
+        $items = $this->fetchTable('RateCardItems');
+        $suffix = uniqid();
+
+        $card = $rateCards->newEntity([
+            'company_id' => $this->companyId,
+            'name' => 'BOQ Test Card',
+            'version' => 1,
+            'status' => 'active',
+            'effective_from' => '2020-01-01',
+        ], ['validate' => false]);
+        $rateCards->saveOrFail($card, ['checkRules' => false]);
+
+        $item = $items->newEntity([
+            'rate_card_id' => (int)$card->id,
+            'job_type_id' => $this->jobTypeId,
+            'warranty_scope' => 'out_of_warranty',
+            'amount_paise' => 120000,
+            'payer' => 'customer',
+            'label' => 'Gas refilling',
+            'is_active' => true,
+        ], ['validate' => false]);
+        $items->saveOrFail($item, ['checkRules' => false]);
+        $this->rateCardItemId = (int)$item->id;
+
+        $zeroItem = $items->newEntity([
+            'rate_card_id' => (int)$card->id,
+            'job_type_id' => $this->jobTypeId,
+            'warranty_scope' => 'out_of_warranty',
+            'amount_paise' => 0,
+            'payer' => 'customer',
+            'label' => 'Free courtesy check',
+            'is_active' => true,
+        ], ['validate' => false]);
+        $items->saveOrFail($zeroItem, ['checkRules' => false]);
+        $this->zeroRateCardItemId = (int)$zeroItem->id;
+
+        $companies = $this->fetchTable('Companies');
+        $otherCompany = $companies->newEntity([
+            'code' => 'BOQOTHER' . $suffix,
+            'name' => 'BOQ Other Company',
+        ], ['validate' => false]);
+        $companies->saveOrFail($otherCompany);
+
+        $otherCard = $rateCards->newEntity([
+            'company_id' => (int)$otherCompany->id,
+            'name' => 'BOQ Other Card',
+            'version' => 1,
+            'status' => 'active',
+            'effective_from' => '2020-01-01',
+        ], ['validate' => false]);
+        $rateCards->saveOrFail($otherCard, ['checkRules' => false]);
+
+        $otherItem = $items->newEntity([
+            'rate_card_id' => (int)$otherCard->id,
+            'job_type_id' => $this->jobTypeId,
+            'warranty_scope' => 'out_of_warranty',
+            'amount_paise' => 50000,
+            'payer' => 'customer',
+            'label' => 'Other company service',
+            'is_active' => true,
+        ], ['validate' => false]);
+        $items->saveOrFail($otherItem, ['checkRules' => false]);
+        $this->otherCompanyRateCardItemId = (int)$otherItem->id;
     }
 }

@@ -191,6 +191,11 @@ class TicketAdjustmentService
      * no longer part of the original quote and has to be an adjustment
      * carrying a reason, so the desk is sent there instead.
      *
+     * Unlike an adjustment, this is not a free-form amount: it must name a
+     * `rate_card_item_id` on the company's own active rate card, so what
+     * gets billed for a service always traces back to a price the company
+     * agreed to, not a figure typed in the moment.
+     *
      * The line is written unfrozen. Closure prices the ticket and then
      * freezes it alongside the computed lines rather than recomputing it
      * away — see TicketClosureService::freeze().
@@ -235,36 +240,40 @@ class TicketAdjustmentService
             ];
         }
 
-        $description = trim((string)($data['description'] ?? $data['reason'] ?? ''));
-        if ($description === '') {
+        $rateCardItemId = (int)($data['rate_card_item_id'] ?? 0);
+        if ($rateCardItemId <= 0) {
             return [
                 'ok' => false,
                 'code' => 'validation_error',
-                'errors' => ['description' => [
-                    'Name the service. An unlabelled line on an invoice is the '
-                    . 'one the company disputes.',
+                'errors' => ['rate_card_item_id' => [
+                    'Pick a service from the company\'s active rate card.',
                 ]],
             ];
         }
 
-        $raw = $data['amount'] ?? '';
-        if ($raw === '' || $raw === null) {
+        $item = $this->fetchTable('RateCardItems')->find()
+            ->where(['RateCardItems.id' => $rateCardItemId, 'RateCardItems.is_active' => true])
+            ->innerJoinWith('RateCards', function ($q) use ($ticket) {
+                return $q->where([
+                    'RateCards.company_id' => $ticket->company_id,
+                    'RateCards.status' => 'active',
+                ]);
+            })
+            ->contain(['JobTypes'])
+            ->first();
+
+        if ($item === null) {
             return [
                 'ok' => false,
                 'code' => 'validation_error',
-                'errors' => ['amount' => ['How much is this service?']],
+                'errors' => ['rate_card_item_id' => [
+                    'That item is not on this company\'s active rate card.',
+                ]],
             ];
         }
 
-        try {
-            $amount = Money::parse((string)$raw);
-        } catch (InvalidArgumentException $e) {
-            return [
-                'ok' => false,
-                'code' => 'validation_error',
-                'errors' => ['amount' => [$e->getMessage()]],
-            ];
-        }
+        $description = $item->label !== '' ? $item->label : $item->job_type->name;
+        $amount = Money::fromPaise((int)$item->amount_paise);
 
         if ($amount->isZero()) {
             return [
@@ -274,14 +283,22 @@ class TicketAdjustmentService
             ];
         }
 
-        $line = (new ChargeBuilder())->boqLine($ledger, $amount, $description, $actorUserId);
+        $line = (new ChargeBuilder())->boqLine(
+            $ledger,
+            $amount,
+            $description,
+            $actorUserId,
+            ['rate_card_item_id' => $item->id],
+        );
 
         $charges = $this->fetchTable('TicketCharges');
         $row = $line->toRow() + [
             'ticket_id' => $ticketId,
-            // Left null until closure stamps the card and agreement the
-            // whole ticket is priced under. Binding today's card to a job
-            // that closes next week would attribute it to the wrong terms.
+            // The card itself is left null until closure stamps the card
+            // and agreement the whole ticket is priced under — binding
+            // today's card to a job that closes next week would attribute
+            // it to the wrong terms. The item is pinned, though: it names
+            // the exact priced line the desk picked, whichever card wins.
             'rate_card_id' => null,
             'company_agreement_id' => null,
             'computed_at' => DateTime::now(),
@@ -308,6 +325,7 @@ class TicketAdjustmentService
                 'ledger' => $ledger->value,
                 'amount_paise' => $amount->paise,
                 'description' => $description,
+                'rate_card_item_id' => $item->id,
             ],
         );
 

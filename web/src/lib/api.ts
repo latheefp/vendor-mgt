@@ -479,10 +479,13 @@ export const api = {
 
   /** Records extra work agreed on an open job — a BOQ line. Part of the bill
    *  being assembled, so it does not freeze the ticket. Refused once the
-   *  charges are frozen, where the correction is an adjustment instead. */
+   *  charges are frozen, where the correction is an adjustment instead.
+   *  `rate_card_item_id` must name an item on the company's own active rate
+   *  card — the amount and description are taken from that item, never
+   *  typed by hand, so a bill always traces back to an agreed price. */
   addTicketServiceLine: (
     id: number,
-    line: { ledger: string; amount: string; description: string; notes?: string },
+    line: { ledger: string; rate_card_item_id: number; notes?: string },
   ) =>
     request<{ charge_id: number; line: RatePreviewLine; totals: Record<string, Money> }>(
       `/tickets/${id}/charges`,
