@@ -1774,6 +1774,30 @@ function RateCardsTab() {
   )
   const sizeBanded = !selectedCategory || Boolean(Number(selectedCategory.is_sized))
 
+  // Matches the "Size gap for <job_type_code> (<scope>): nothing priced
+  // between X" and Y"." message bandProblems() on the backend produces —
+  // parsed back apart so a gap in the list can jump straight to a
+  // prefilled Add Rate Item form instead of making someone retype it.
+  const sizeGapPattern = /^Size gap for (\S+) \(([a-z_]+)\): nothing priced between (\d+)" and (\d+)"\.$/
+
+  const openAddItemForGap = (problem: string) => {
+    const match = problem.match(sizeGapPattern)
+    if (!match) return
+    const [, code, scope, min, max] = match
+    const jobType = jobTypes.find((jt) => jt.code === code)
+    setItemForm((prev) => ({
+      ...prev,
+      job_type_id: jobType ? String(jobType.id) : prev.job_type_id,
+      product_category_id: '',
+      warranty_scope: scope,
+      label: '',
+      size_min_inch: min,
+      size_max_inch: max,
+      amount_rupees: '',
+    }))
+    setItemModalOpen(true)
+  }
+
   useEffect(() => {
     const fetchCompaniesAndOptions = async () => {
       try {
@@ -1987,13 +2011,17 @@ function RateCardsTab() {
     }
   }
 
-  const handlePublishCard = async () => {
+  const handlePublishCard = async (ignoreWarnings: string[] = []) => {
     if (!selectedCompanyId || !card) return
-    if (!confirm(`Are you sure you want to publish "${card.name || 'Rate Card'}" (v${card.version})? Once published, this card becomes immutable.`)) return
+
+    const confirmText = ignoreWarnings.length > 0
+      ? `Publish "${card.name || 'Rate Card'}" (v${card.version}) anyway, ignoring ${ignoreWarnings.length} warning${ignoreWarnings.length > 1 ? 's' : ''}? Any ticket that falls in an unpriced gap will be unbillable until a later version covers it.`
+      : `Are you sure you want to publish "${card.name || 'Rate Card'}" (v${card.version})? Once published, this card becomes immutable.`
+    if (!confirm(confirmText)) return
     setMessage(null)
 
     try {
-      await api.publishRateCard(selectedCompanyId, card.id)
+      await api.publishRateCard(selectedCompanyId, card.id, ignoreWarnings)
       setMessage({ type: 'success', text: `Rate Card v${card.version} published and active!` })
       await reloadRateCards(selectedCompanyId)
     } catch (err: any) {
@@ -2143,7 +2171,7 @@ function RateCardsTab() {
                       Delete Draft
                     </button>
                     <button
-                      onClick={handlePublishCard}
+                      onClick={() => void handlePublishCard()}
                       className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
                     >
                       Publish Rate Card
@@ -2165,9 +2193,25 @@ function RateCardsTab() {
                 </p>
                 <ul className="list-inside list-disc space-y-1">
                   {draftProblems.map((problem, i) => (
-                    <li key={i}>{problem}</li>
+                    <li key={i} className="flex flex-wrap items-center justify-between gap-2">
+                      <span>{problem}</span>
+                      {sizeGapPattern.test(problem) && (
+                        <button
+                          onClick={() => openAddItemForGap(problem)}
+                          className="shrink-0 whitespace-nowrap rounded border border-amber-400 px-2 py-0.5 text-[11px] font-semibold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                        >
+                          + Price this gap
+                        </button>
+                      )}
+                    </li>
                   ))}
                 </ul>
+                <button
+                  onClick={() => void handlePublishCard(draftProblems)}
+                  className="mt-3 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                >
+                  Publish Anyway (ignore these warnings)
+                </button>
               </div>
             )}
           </div>
