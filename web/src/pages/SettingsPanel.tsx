@@ -18,7 +18,6 @@ type SettingsTab =
   | 'users'
   | 'technicians'
   | 'roles'
-  | 'companies'
   | 'rate-cards'
   | 'products'
   | 'master-lists'
@@ -37,17 +36,13 @@ const SETTINGS_TAB_META: Record<SettingsTab, { title: string; description: strin
     title: 'Groups & Permissions',
     description: 'Configure security groups and granular access control rules.',
   },
-  companies: {
-    title: 'Companies',
-    description: 'Manage client companies and their districts & service centers.',
-  },
   'rate-cards': {
     title: 'Rate Cards & SLA',
     description: 'Manage pricing rate cards and service level agreements.',
   },
   products: {
-    title: 'Products & Appliances',
-    description: 'Manage appliance categories and the product models catalogue.',
+    title: 'Companies & Products',
+    description: 'Manage client companies, brands, appliance categories, and the product models catalogue.',
   },
   'master-lists': {
     title: 'Master Lists',
@@ -82,7 +77,6 @@ export function SettingsPanel({ initialTab = 'users' }: { initialTab?: SettingsT
       {activeTab === 'users' && <UsersTab />}
       {activeTab === 'technicians' && <TechniciansTab />}
       {activeTab === 'roles' && <RolesTab />}
-      {activeTab === 'companies' && <CompaniesTab />}
       {activeTab === 'rate-cards' && <RateCardsTab />}
       {activeTab === 'products' && <ProductsTab />}
       {activeTab === 'master-lists' && <MasterListsTab />}
@@ -2610,7 +2604,15 @@ function RateCardsTab() {
 /* ==================================================================== */
 /* 5. PRODUCTS & APPLIANCES TAB                                         */
 /* ==================================================================== */
+const PRODUCTS_SUB_TABS: { key: 'company' | 'brands' | 'products' | 'categories'; label: string }[] = [
+  { key: 'company', label: 'Company' },
+  { key: 'brands', label: 'Brands' },
+  { key: 'products', label: 'Product and Model' },
+  { key: 'categories', label: 'Appliance Categories' },
+]
+
 function ProductsTab() {
+  const [subTab, setSubTab] = useState<'company' | 'brands' | 'products' | 'categories'>('company')
   const [categories, setCategories] = useState<ProductCategoryItem[]>([])
   const [products, setProducts] = useState<ProductItem[]>([])
   const [brands, setBrands] = useState<BrandItem[]>([])
@@ -2728,8 +2730,29 @@ function ProductsTab() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Sub-tab navigation */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
+        {PRODUCTS_SUB_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setSubTab(tab.key)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              subTab === tab.key
+                ? 'bg-brand-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Company Sub-tab */}
+      {subTab === 'company' && <CompaniesTab />}
+
       {/* Appliance Categories Section */}
+      {subTab === 'categories' && (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -2772,9 +2795,11 @@ function ProductsTab() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Brands Section */}
-      <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+      {subTab === 'brands' && (
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -2838,9 +2863,11 @@ function ProductsTab() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Product Model Catalogue Section */}
-      <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+      {subTab === 'products' && (
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -2918,6 +2945,7 @@ function ProductsTab() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Add Appliance Category Modal */}
       {catModalOpen && (

@@ -23,7 +23,6 @@ type SettingsTab =
   | 'users'
   | 'technicians'
   | 'roles'
-  | 'companies'
   | 'rate-cards'
   | 'products'
   | 'master-lists'
@@ -289,18 +288,6 @@ export function DeskShell({ logo }: { logo?: string | null }) {
                 </button>
 
                 <button
-                  onClick={() => handleNavigate('settings', 'companies')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'companies'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">🏢</span>
-                  <span>Companies</span>
-                </button>
-
-                <button
                   onClick={() => handleNavigate('settings', 'rate-cards')}
                   className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     section === 'settings' && settingsTab === 'rate-cards'
@@ -321,7 +308,7 @@ export function DeskShell({ logo }: { logo?: string | null }) {
                   }`}
                 >
                   <span className="text-sm">🖥️</span>
-                  <span>Products & Appliances</span>
+                  <span>Companies & Products</span>
                 </button>
 
                 <button
