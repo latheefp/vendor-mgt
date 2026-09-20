@@ -694,6 +694,71 @@ export const api = {
   publishRateCard: (companyId: number, cardId: number, ignoreWarnings?: string[]) =>
     request<Record<string, unknown>>(`/companies/${companyId}/rate-cards/${cardId}/publish`, { method: 'POST', body: { ignore_warnings: ignoreWarnings } }),
 
+  /** Triggers a browser download of the CSV template for bulk-adding rate
+   *  items, pre-filled with this company's job type and appliance codes. */
+  downloadRateCardItemsTemplate: async (companyId: number, cardId: number) => {
+    const response = await fetch(`${API_BASE}/companies/${companyId}/rate-cards/${cardId}/items/template`, {
+      headers: { Accept: 'text/csv' },
+      credentials: 'same-origin',
+    })
+
+    if (!response.ok) {
+      throw new ApiError(response.status, { code: 'download_failed', message: `Download failed (${response.status}).` })
+    }
+
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'rate-card-items-template.csv'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
+
+  /** Bulk-adds priced lines from a filled-in copy of that template.
+   *  Multipart, so `request()` is bypassed the same way file uploads are. */
+  importRateCardItems: async (companyId: number, cardId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+
+    const token = csrfToken()
+    const response = await fetch(`${API_BASE}/companies/${companyId}/rate-cards/${cardId}/items/import`, {
+      method: 'POST',
+      headers: token ? { Accept: 'application/json', [CSRF_HEADER]: token } : { Accept: 'application/json' },
+      credentials: 'same-origin',
+      body: form,
+    })
+
+    const parsed = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        (parsed as { error?: ApiErrorBody })?.error ?? { code: 'upload_failed', message: `Upload failed (${response.status}).` },
+      )
+    }
+
+    return (parsed as ApiEnvelope<{
+      created_count: number
+      rate_card_item_ids: number[]
+      duplicate_count: number
+      errors: { row: number; message: string; duplicate: boolean }[]
+    }>).data
+  },
+
+  /** Collapses lines that only differ by appliance category — the usual
+   *  result of importing the same CSV before and after a category column
+   *  was added — into one. Lines that disagree on amount or payer are left
+   *  alone and reported back as conflicts. */
+  mergeRateCardItemDuplicates: (companyId: number, cardId: number) =>
+    request<{
+      merged_groups: number
+      removed: number[]
+      conflicts: { key: string; item_ids: number[] }[]
+    }>(`/companies/${companyId}/rate-cards/${cardId}/items/merge-duplicates`, { method: 'POST' }),
+
   // ---- Products & Appliances ----
   listProductCategories: () => request<ProductCategoryItem[]>('/product-categories'),
   createProductCategory: (payload: Record<string, unknown>) =>

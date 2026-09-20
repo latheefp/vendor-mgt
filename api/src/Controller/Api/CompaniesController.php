@@ -41,7 +41,8 @@ class CompaniesController extends ApiController
         $this->Authentication->allowUnauthenticated([
             'index', 'view', 'settings', 'masterLists', 'rateCards', 'rateCard', 'settingCatalog',
             'add', 'edit', 'delete', 'createRateCard', 'addRateCardItem', 'addSlaRule', 'publishRateCard',
-            'deleteRateCardItem', 'deleteSlaRule',
+            'deleteRateCardItem', 'deleteSlaRule', 'rateCardItemsTemplate', 'importRateCardItems',
+            'mergeRateCardItemDuplicates',
         ]);
     }
 
@@ -516,4 +517,147 @@ class CompaniesController extends ApiController
         ]);
     }
 
+    /**
+     * GET /api/companies/{id}/rate-cards/{cardId}/items/template
+     *
+     * A CSV a spreadsheet-literate ops person can fill in without reading
+     * this controller: headers matching importRateCardItems()'s columns,
+     * one worked example, and — appended after a blank line — every job
+     * type and appliance code this company can price against, since those
+     * codes are exactly what that endpoint's lookups reject when they
+     * don't match.
+     */
+    public function rateCardItemsTemplate(?string $id = null): Response
+    {
+        $companyId = (int)$this->routeParam('id', $id);
+
+        $config = new CompanyConfigRepository();
+        $jobTypes = $config->masterList('job_types', $companyId);
+        $categories = $config->masterList('product_categories', $companyId);
+
+        $handle = fopen('php://temp', 'r+');
+        // PHP 8.5 deprecates the implicit escape character default.
+        $escape = '\\';
+
+        fputcsv($handle, [
+            'job_type_code', 'product_category_code', 'warranty_scope', 'label',
+            'size_min_inch', 'size_max_inch', 'amount_rupees', 'payer',
+        ], ',', '"', $escape);
+        fputcsv(
+            $handle,
+            ['service', '', 'in_warranty', 'Basic Service Charge', '', '', '500.00', 'company'],
+            ',',
+            '"',
+            $escape,
+        );
+        fputcsv($handle, [], ',', '"', $escape);
+        fputcsv($handle, ['Reference: job_type_code values for this company'], ',', '"', $escape);
+        fputcsv($handle, ['code', 'name'], ',', '"', $escape);
+        foreach ($jobTypes as $jobType) {
+            fputcsv($handle, [$jobType['code'], $jobType['name']], ',', '"', $escape);
+        }
+        fputcsv($handle, [], ',', '"', $escape);
+        fputcsv($handle, ['Reference: product_category_code values (blank = all appliances)'], ',', '"', $escape);
+        fputcsv($handle, ['code', 'name'], ',', '"', $escape);
+        foreach ($categories as $category) {
+            fputcsv($handle, [$category['code'], $category['name']], ',', '"', $escape);
+        }
+
+        rewind($handle);
+        $csv = (string)stream_get_contents($handle);
+        fclose($handle);
+
+        return $this->response
+            ->withType('text/csv')
+            ->withHeader('Content-Disposition', 'attachment; filename="rate-card-items-template.csv"')
+            ->withStringBody($csv);
+    }
+
+    /**
+     * POST /api/companies/{id}/rate-cards/{cardId}/items/import
+     *
+     * Bulk-adds priced lines from a CSV upload, column-for-column with the
+     * template rateCardItemsTemplate() serves. One bad row does not sink
+     * the batch — every row is attempted and reported.
+     */
+    public function importRateCardItems(?string $id = null, ?string $cardId = null): Response
+    {
+        $cardId = $this->routeParam('card_id', $cardId);
+
+        $file = $this->request->getUploadedFile('file');
+        if ($file === null || $file->getError() !== UPLOAD_ERR_OK) {
+            return $this->fail('invalid_upload', 'No CSV file was uploaded.', 422);
+        }
+
+        $rows = $this->parseCsvRows((string)$file->getStream()->getContents());
+
+        try {
+            $result = (new RateCardAuthoring())->importItems((int)$cardId, $rows);
+        } catch (RateCardLockedException $e) {
+            return $this->fail('rate_card_locked', $e->getMessage(), 409);
+        }
+
+        return $this->respond([
+            'created_count' => count($result['created']),
+            'rate_card_item_ids' => $result['created'],
+            'duplicate_count' => count(array_filter($result['errors'], static fn(array $e): bool => $e['duplicate'])),
+            'errors' => $result['errors'],
+        ]);
+    }
+
+    /**
+     * POST /api/companies/{id}/rate-cards/{cardId}/items/merge-duplicates
+     *
+     * Collapses lines that only differ by appliance category — the usual
+     * result of importing the same CSV before and after a category column
+     * was added, or importing on top of lines added by hand — into one.
+     * Lines that disagree on amount or payer are left alone and reported
+     * as conflicts, since collapsing those would silently pick a price.
+     */
+    public function mergeRateCardItemDuplicates(?string $id = null, ?string $cardId = null): Response
+    {
+        $cardId = $this->routeParam('card_id', $cardId);
+
+        try {
+            $result = (new RateCardAuthoring())->mergeDuplicateItems((int)$cardId);
+        } catch (RateCardLockedException $e) {
+            return $this->fail('rate_card_locked', $e->getMessage(), 409);
+        }
+
+        return $this->respond($result);
+    }
+
+    /**
+     * @return list<array<string, string>>
+     */
+    private function parseCsvRows(string $contents): array
+    {
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, $contents);
+        rewind($handle);
+
+        // PHP 8.5 deprecates the implicit escape character default.
+        $header = fgetcsv($handle, 0, ',', '"', '\\');
+        if ($header === false) {
+            fclose($handle);
+
+            return [];
+        }
+        $header = array_map(static fn($col): string => strtolower(trim((string)$col)), $header);
+
+        $rows = [];
+        while (($line = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
+            if (count(array_filter($line, static fn($v): bool => trim((string)$v) !== '')) === 0) {
+                continue;
+            }
+            $row = [];
+            foreach ($header as $i => $key) {
+                $row[$key] = (string)($line[$i] ?? '');
+            }
+            $rows[] = $row;
+        }
+        fclose($handle);
+
+        return $rows;
+    }
 }

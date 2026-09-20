@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from '../lib/api'
 import type {
   UserItem,
@@ -1714,6 +1714,16 @@ function RateCardsTab() {
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [slaModalOpen, setSlaModalOpen] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [importingItems, setImportingItems] = useState(false)
+  const [mergingDuplicates, setMergingDuplicates] = useState(false)
+  // Rate card item ids from the most recent CSV upload, so the table can
+  // highlight exactly the rows that upload just added.
+  const [justImportedIds, setJustImportedIds] = useState<Set<number>>(new Set())
+  // Skipped/failed rows from the most recent CSV upload. Duplicates are
+  // shown struck through — they were never written, this is just showing
+  // why — everything else as a plain validation error.
+  const [importIssues, setImportIssues] = useState<{ row: number; message: string; duplicate: boolean }[]>([])
+  const csvInputRef = useRef<HTMLInputElement>(null)
 
   // Create Card Form
   const [cardForm, setCardForm] = useState({
@@ -1752,6 +1762,9 @@ function RateCardsTab() {
   const card = detail?.card ?? null
   const items: any[] = detail?.items ?? []
   const slaRules: any[] = detail?.sla_rules ?? []
+  // Only present for a draft card — the specific reasons it can't publish
+  // yet (a zero-priced line, a size gap, a missing warranty scope...).
+  const draftProblems: string[] = detail?.problems ?? []
 
   // Only a screen has inches. A washing machine priced into a 24"-43" band
   // is a line no ticket can ever match — which is exactly how an
@@ -1813,6 +1826,8 @@ function RateCardsTab() {
 
   const handleSelectCard = async (cardId: number) => {
     if (!selectedCompanyId) return
+    setJustImportedIds(new Set())
+    setImportIssues([])
     try {
       setDetail(await api.getRateCard(selectedCompanyId, cardId))
     } catch (e) {
@@ -1878,6 +1893,74 @@ function RateCardsTab() {
     }
   }
 
+  const handleDownloadTemplate = async () => {
+    if (!selectedCompanyId || !card) return
+    try {
+      await api.downloadRateCardItemsTemplate(selectedCompanyId, card.id)
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to download the CSV template' })
+    }
+  }
+
+  const handleCsvFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // Cleared up front so picking the same file twice in a row still fires
+    // a change event.
+    e.target.value = ''
+    if (!file || !selectedCompanyId || !card) return
+
+    setMessage(null)
+    setJustImportedIds(new Set())
+    setImportIssues([])
+    setImportingItems(true)
+    try {
+      const result = await api.importRateCardItems(selectedCompanyId, card.id, file)
+      const otherErrors = result.errors.filter((err) => !err.duplicate)
+
+      const parts = [`Imported ${result.created_count} rate item(s), highlighted below.`]
+      if (result.duplicate_count > 0) {
+        parts.push(`${result.duplicate_count} duplicate row(s) already on the card were skipped — see below.`)
+      }
+      if (otherErrors.length > 0) {
+        parts.push(`${otherErrors.length} row(s) failed — see below.`)
+      }
+      setMessage({ type: otherErrors.length > 0 ? 'error' : 'success', text: parts.join(' ') })
+      setImportIssues(result.errors)
+      setJustImportedIds(new Set(result.rate_card_item_ids))
+      setDetail(await api.getRateCard(selectedCompanyId, card.id))
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to import the CSV file' })
+    } finally {
+      setImportingItems(false)
+    }
+  }
+
+  const handleMergeDuplicates = async () => {
+    if (!selectedCompanyId || !card) return
+    setMessage(null)
+    setMergingDuplicates(true)
+    try {
+      const result = await api.mergeRateCardItemDuplicates(selectedCompanyId, card.id)
+      const parts = [
+        result.merged_groups > 0
+          ? `Merged ${result.merged_groups} duplicate group(s), removing ${result.removed.length} redundant line(s).`
+          : 'No mergeable duplicates found.',
+      ]
+      if (result.conflicts.length > 0) {
+        parts.push(
+          `${result.conflicts.length} group(s) share a job type, scope and size band but quote different ` +
+            `amounts or payers, so they were left as-is for you to review.`,
+        )
+      }
+      setMessage({ type: result.conflicts.length > 0 ? 'error' : 'success', text: parts.join(' ') })
+      setDetail(await api.getRateCard(selectedCompanyId, card.id))
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to merge duplicate rate items' })
+    } finally {
+      setMergingDuplicates(false)
+    }
+  }
+
   const handleAddSlaSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedCompanyId || !card) return
@@ -1914,7 +1997,16 @@ function RateCardsTab() {
       setMessage({ type: 'success', text: `Rate Card v${card.version} published and active!` })
       await reloadRateCards(selectedCompanyId)
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to publish rate card' })
+      // The generic top-level message ("has problems...") is the same for
+      // every draft; the actual reasons are the point, so surface those.
+      const problems = (err?.body?.detail?.problems ?? []) as string[]
+      const text = problems.length > 0
+        ? `Cannot publish yet: ${problems.join(' ')}`
+        : err.message || 'Failed to publish rate card'
+      setMessage({ type: 'error', text })
+      // The failed attempt is itself the freshest read of what's wrong —
+      // no need to wait for the next reload to show it in the panel below.
+      setDetail((prev: any) => (prev ? { ...prev, problems } : prev))
     }
   }
 
@@ -2043,6 +2135,19 @@ function RateCardsTab() {
                 )}
               </div>
             </div>
+
+            {card.status === 'draft' && draftProblems.length > 0 && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                <p className="mb-1.5 font-semibold">
+                  Not publishable yet — {draftProblems.length} problem{draftProblems.length > 1 ? 's' : ''} to resolve:
+                </p>
+                <ul className="list-inside list-disc space-y-1">
+                  {draftProblems.map((problem, i) => (
+                    <li key={i}>{problem}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Rate Items Table */}
@@ -2052,14 +2157,86 @@ function RateCardsTab() {
                 Rate Card Items ({items.length})
               </h4>
               {card.status === 'draft' && (
-                <button
-                  onClick={() => setItemModalOpen(true)}
-                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                >
-                  + Add Rate Item
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Download CSV Template
+                  </button>
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={handleCsvFileSelected}
+                  />
+                  <button
+                    onClick={() => csvInputRef.current?.click()}
+                    disabled={importingItems}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {importingItems ? 'Uploading…' : 'Upload CSV'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (
+                        confirm(
+                          'Merge duplicate rate items? Lines that share a job type, warranty scope and size ' +
+                            'band, and agree on amount and payer, will be collapsed into one — keeping the ' +
+                            'more specific (appliance-tagged) line and removing the rest.',
+                        )
+                      ) {
+                        void handleMergeDuplicates()
+                      }
+                    }}
+                    disabled={mergingDuplicates}
+                    className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                  >
+                    {mergingDuplicates ? 'Merging…' : 'Merge Duplicates'}
+                  </button>
+                  <button
+                    onClick={() => setItemModalOpen(true)}
+                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                  >
+                    + Add Rate Item
+                  </button>
+                </div>
               )}
             </div>
+
+            {importIssues.length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900">
+                <p className="mb-2 font-semibold text-slate-700 dark:text-slate-300">
+                  Rows skipped from the last CSV upload
+                </p>
+                <ul className="space-y-1.5">
+                  {importIssues.map((issue, i) => (
+                    <li
+                      key={i}
+                      className={`flex items-start gap-2 rounded-md px-2 py-1.5 ${
+                        issue.duplicate
+                          ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
+                          : 'bg-rose-50 text-rose-800 dark:bg-rose-950/30 dark:text-rose-300'
+                      }`}
+                    >
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                          issue.duplicate
+                            ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200'
+                            : 'bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-200'
+                        }`}
+                      >
+                        {issue.duplicate ? 'Duplicate' : 'Failed'}
+                      </span>
+                      <span className={issue.duplicate ? 'line-through decoration-2' : ''}>
+                        Row {issue.row}: {issue.message}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
               <table className="w-full text-left text-sm">
@@ -2082,40 +2259,57 @@ function RateCardsTab() {
                       </td>
                     </tr>
                   ) : (
-                    items.map((item: any) => (
-                      <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
-                          {item.label || item.job_type?.name || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                          {item.product_category?.name ?? 'All'}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                          {SCOPE_LABELS[item.warranty_scope] ?? item.warranty_scope}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                          {item.size_min_inch && item.size_max_inch
-                            ? `${Number(item.size_min_inch)}″ – ${Number(item.size_max_inch)}″`
-                            : 'Any'}
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">
-                          ₹{(item.amount_paise / 100).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700 dark:text-slate-300 capitalize">
-                          {item.payer}
-                        </td>
-                        {card.status === 'draft' && (
-                          <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={() => void handleDeleteItem(item.id)}
-                              className="text-xs font-medium text-rose-600 hover:text-rose-700 dark:text-rose-400"
-                            >
-                              Remove
-                            </button>
+                    items.map((item: any) => {
+                      const justImported = justImportedIds.has(item.id)
+                      return (
+                        <tr
+                          key={item.id}
+                          className={
+                            justImported
+                              ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                          }
+                        >
+                          <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                            <span className="flex items-center gap-2">
+                              {item.label || item.job_type?.name || '—'}
+                              {justImported && (
+                                <span className="rounded bg-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900 dark:bg-emerald-900 dark:text-emerald-200">
+                                  New
+                                </span>
+                              )}
+                            </span>
                           </td>
-                        )}
-                      </tr>
-                    ))
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                            {item.product_category?.name ?? 'All'}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                            {SCOPE_LABELS[item.warranty_scope] ?? item.warranty_scope}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                            {item.size_min_inch && item.size_max_inch
+                              ? `${Number(item.size_min_inch)}″ – ${Number(item.size_max_inch)}″`
+                              : 'Any'}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">
+                            ₹{(item.amount_paise / 100).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-300 capitalize">
+                            {item.payer}
+                          </td>
+                          {card.status === 'draft' && (
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                onClick={() => void handleDeleteItem(item.id)}
+                                className="text-xs font-medium text-rose-600 hover:text-rose-700 dark:text-rose-400"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>

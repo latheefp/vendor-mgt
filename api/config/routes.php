@@ -146,6 +146,9 @@ return function (RouteBuilder $routes): void {
         $builder->post('/companies/{id}/rate-cards', ['controller' => 'Companies', 'action' => 'createRateCard', 'prefix' => 'Api']);
         $builder->get('/companies/{id}/rate-cards/{card_id}', ['controller' => 'Companies', 'action' => 'rateCard', 'prefix' => 'Api']);
         $builder->post('/companies/{id}/rate-cards/{card_id}/items', ['controller' => 'Companies', 'action' => 'addRateCardItem', 'prefix' => 'Api']);
+        $builder->get('/companies/{id}/rate-cards/{card_id}/items/template', ['controller' => 'Companies', 'action' => 'rateCardItemsTemplate', 'prefix' => 'Api']);
+        $builder->post('/companies/{id}/rate-cards/{card_id}/items/import', ['controller' => 'Companies', 'action' => 'importRateCardItems', 'prefix' => 'Api']);
+        $builder->post('/companies/{id}/rate-cards/{card_id}/items/merge-duplicates', ['controller' => 'Companies', 'action' => 'mergeRateCardItemDuplicates', 'prefix' => 'Api']);
         $builder->delete('/companies/{id}/rate-cards/{card_id}/items/{item_id}', ['controller' => 'Companies', 'action' => 'deleteRateCardItem', 'prefix' => 'Api']);
         $builder->post('/companies/{id}/rate-cards/{card_id}/sla-rules', ['controller' => 'Companies', 'action' => 'addSlaRule', 'prefix' => 'Api']);
         $builder->delete('/companies/{id}/rate-cards/{card_id}/sla-rules/{rule_id}', ['controller' => 'Companies', 'action' => 'deleteSlaRule', 'prefix' => 'Api']);

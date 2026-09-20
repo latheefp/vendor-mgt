@@ -3,9 +3,12 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Domain\Exception\DuplicateRateCardRowException;
 use App\Domain\Exception\RateCardLockedException;
 use Cake\I18n\DateTime;
+use Cake\ORM\Exception\PersistenceFailedException;
 use Cake\ORM\Locator\LocatorAwareTrait;
+use InvalidArgumentException;
 
 /**
  * Creating, editing and publishing a company's rate card.
@@ -143,6 +146,269 @@ class RateCardAuthoring
         $items->saveOrFail($item);
 
         return (int)$item->id;
+    }
+
+    /**
+     * Bulk-add priced lines from parsed CSV rows.
+     *
+     * Each row is resolved and saved independently — one bad row (an
+     * unrecognised job type code, a non-numeric amount) does not sink the
+     * rows around it. That mirrors validateDraft()'s philosophy: surface
+     * every problem at once rather than stop at the first.
+     *
+     * A row is a duplicate — and skipped rather than saved — when its job
+     * type, appliance, warranty scope and size band match a line already on
+     * the card, whether that line was there before the upload or came from
+     * an earlier row in the same file. Those four fields are exactly what
+     * RateResolver matches a ticket against, so two lines agreeing on all
+     * four never coexist usefully: one just shadows the other.
+     *
+     * @param list<array<string, string>> $rows CSV rows keyed by lower-cased
+     *                                          header: job_type_code,
+     *                                          product_category_code,
+     *                                          warranty_scope, label,
+     *                                          size_min_inch, size_max_inch,
+     *                                          amount_rupees, payer
+     * @return array{created: list<int>, errors: list<array{row: int, message: string, duplicate: bool}>}
+     */
+    public function importItems(int $cardId, array $rows): array
+    {
+        $this->assertDraft($cardId);
+
+        $card = $this->fetchTable('RateCards')->get($cardId);
+
+        $jobTypesByCode = [];
+        foreach ((new CompanyConfigRepository())->masterList('job_types', (int)$card->company_id) as $row) {
+            $jobTypesByCode[(string)$row['code']] = (int)$row['id'];
+        }
+
+        $categoriesByCode = [];
+        foreach ((new CompanyConfigRepository())->masterList('product_categories', (int)$card->company_id) as $row) {
+            $categoriesByCode[(string)$row['code']] = (int)$row['id'];
+        }
+
+        $seenKeys = [];
+        $existing = $this->fetchTable('RateCardItems')->find()
+            ->select(['job_type_id', 'product_category_id', 'warranty_scope', 'size_min_inch', 'size_max_inch'])
+            ->where(['rate_card_id' => $cardId, 'is_active' => true])
+            ->disableHydration()
+            ->all();
+        foreach ($existing as $item) {
+            $seenKeys[$this->itemKey(
+                (int)$item['job_type_id'],
+                $item['product_category_id'] !== null ? (int)$item['product_category_id'] : null,
+                (string)$item['warranty_scope'],
+                $item['size_min_inch'],
+                $item['size_max_inch'],
+            )] = true;
+        }
+
+        $created = [];
+        $errors = [];
+
+        foreach ($rows as $i => $row) {
+            // Row 1 is the header, so the first data row is row 2 — the
+            // number a spreadsheet-literate person actually sees.
+            $rowNumber = $i + 2;
+
+            try {
+                $jobTypeCode = trim((string)($row['job_type_code'] ?? ''));
+                if ($jobTypeCode === '') {
+                    throw new InvalidArgumentException('job_type_code is required.');
+                }
+                if (!isset($jobTypesByCode[$jobTypeCode])) {
+                    throw new InvalidArgumentException(sprintf('Unknown job_type_code "%s".', $jobTypeCode));
+                }
+
+                $categoryCode = trim((string)($row['product_category_code'] ?? ''));
+                $categoryId = null;
+                if ($categoryCode !== '') {
+                    if (!isset($categoriesByCode[$categoryCode])) {
+                        throw new InvalidArgumentException(
+                            sprintf('Unknown product_category_code "%s".', $categoryCode),
+                        );
+                    }
+                    $categoryId = $categoriesByCode[$categoryCode];
+                }
+
+                $amountRaw = trim((string)($row['amount_rupees'] ?? ''));
+                if ($amountRaw === '' || !is_numeric($amountRaw)) {
+                    throw new InvalidArgumentException('amount_rupees is required and must be a number.');
+                }
+
+                $sizeMin = trim((string)($row['size_min_inch'] ?? ''));
+                $sizeMax = trim((string)($row['size_max_inch'] ?? ''));
+                $label = trim((string)($row['label'] ?? ''));
+                $scope = trim((string)($row['warranty_scope'] ?? '')) ?: 'not_applicable';
+
+                $key = $this->itemKey(
+                    $jobTypesByCode[$jobTypeCode],
+                    $categoryId,
+                    $scope,
+                    $sizeMin !== '' ? $sizeMin : null,
+                    $sizeMax !== '' ? $sizeMax : null,
+                );
+                if (isset($seenKeys[$key])) {
+                    throw new DuplicateRateCardRowException(
+                        'Duplicate of an existing line (same job type, appliance, warranty '
+                        . 'scope and size band) — skipped.',
+                    );
+                }
+
+                $itemId = $this->addItem($cardId, [
+                    'job_type_id' => $jobTypesByCode[$jobTypeCode],
+                    'product_category_id' => $categoryId,
+                    'warranty_scope' => $scope,
+                    'label' => $label !== '' ? $label : null,
+                    'size_min_inch' => $sizeMin !== '' ? $sizeMin : null,
+                    'size_max_inch' => $sizeMax !== '' ? $sizeMax : null,
+                    'amount_paise' => (int)round(((float)$amountRaw) * 100),
+                    'payer' => trim((string)($row['payer'] ?? '')) ?: 'company',
+                ]);
+
+                $seenKeys[$key] = true;
+                $created[] = $itemId;
+            } catch (DuplicateRateCardRowException $e) {
+                $errors[] = ['row' => $rowNumber, 'message' => $e->getMessage(), 'duplicate' => true];
+            } catch (PersistenceFailedException $e) {
+                $errors[] = ['row' => $rowNumber, 'message' => $this->firstValidationError($e), 'duplicate' => false];
+            } catch (InvalidArgumentException $e) {
+                $errors[] = ['row' => $rowNumber, 'message' => $e->getMessage(), 'duplicate' => false];
+            }
+        }
+
+        return ['created' => $created, 'errors' => $errors];
+    }
+
+    /**
+     * Collapse lines that only differ by appliance category into one.
+     *
+     * validateDraft()'s overlap check groups by job type and warranty scope
+     * alone — it does not know about category — so a line with no category
+     * (applies to every appliance) and a category-specific line covering
+     * the exact same size band are indistinguishable to it from two prices
+     * quoted for the same job twice. That is usually exactly what they are:
+     * the same CSV uploaded once before a category column was added and
+     * again after, or the same line added by hand and then imported.
+     *
+     * A group only merges when every line in it agrees on amount and
+     * payer — if they don't, there are genuinely two different asking
+     * prices for the same job, and collapsing them would silently pick a
+     * winner. Those groups are returned as conflicts instead, for a human
+     * to resolve.
+     *
+     * Within a mergeable group, the surviving line is the most specific
+     * one — non-null category over null — since a null-category line
+     * asserts nothing a category-specific line doesn't already say more
+     * precisely.
+     *
+     * @return array{merged_groups: int, removed: list<int>, conflicts: list<array{key: string, item_ids: list<int>}>}
+     */
+    public function mergeDuplicateItems(int $cardId): array
+    {
+        $this->assertDraft($cardId);
+
+        $rows = $this->fetchTable('RateCardItems')->find()
+            ->select([
+                'id', 'job_type_id', 'product_category_id', 'warranty_scope',
+                'size_min_inch', 'size_max_inch', 'amount_paise', 'payer',
+            ])
+            ->where(['rate_card_id' => $cardId, 'is_active' => true])
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        $groups = [];
+        foreach ($rows as $item) {
+            $key = implode('|', [
+                $item['job_type_id'],
+                $item['warranty_scope'],
+                $item['size_min_inch'] ?? 'null',
+                $item['size_max_inch'] ?? 'null',
+            ]);
+            $groups[$key][] = $item;
+        }
+
+        $removed = [];
+        $conflicts = [];
+        $mergedGroups = 0;
+
+        foreach ($groups as $key => $group) {
+            if (count($group) < 2) {
+                continue;
+            }
+
+            $first = $group[0];
+            $agrees = true;
+            foreach ($group as $item) {
+                if ((int)$item['amount_paise'] !== (int)$first['amount_paise'] || $item['payer'] !== $first['payer']) {
+                    $agrees = false;
+                    break;
+                }
+            }
+
+            if (!$agrees) {
+                $conflicts[] = [
+                    'key' => $key,
+                    'item_ids' => array_map(static fn(array $i): int => (int)$i['id'], $group),
+                ];
+                continue;
+            }
+
+            // The most specific line survives: a named category beats the
+            // "applies to everything" null, and a tie keeps the oldest row.
+            usort($group, static function (array $a, array $b): int {
+                $aNamed = $a['product_category_id'] !== null ? 1 : 0;
+                $bNamed = $b['product_category_id'] !== null ? 1 : 0;
+                if ($aNamed !== $bNamed) {
+                    return $bNamed <=> $aNamed;
+                }
+
+                return $a['id'] <=> $b['id'];
+            });
+
+            // The survivor (index 0 after the sort above) simply isn't
+            // touched — merging here means deleting everything else in the
+            // group, not writing a new row.
+            array_shift($group);
+            $items = $this->fetchTable('RateCardItems');
+            foreach ($group as $duplicate) {
+                $items->deleteOrFail($items->get($duplicate['id']));
+                $removed[] = (int)$duplicate['id'];
+            }
+            $mergedGroups++;
+        }
+
+        return ['merged_groups' => $mergedGroups, 'removed' => $removed, 'conflicts' => $conflicts];
+    }
+
+    /**
+     * The fields RateResolver actually matches a ticket against. Two lines
+     * agreeing on all of them never coexist usefully — the later one just
+     * shadows the earlier one at resolve time — so this is what "duplicate"
+     * means for a rate card line.
+     */
+    private function itemKey(int $jobTypeId, ?int $categoryId, string $scope, ?string $min, ?string $max): string
+    {
+        return implode('|', [
+            $jobTypeId,
+            $categoryId ?? 'all',
+            $scope,
+            $min !== null ? number_format((float)$min, 2, '.', '') : 'null',
+            $max !== null ? number_format((float)$max, 2, '.', '') : 'null',
+        ]);
+    }
+
+    /**
+     * The first field error off a failed save, formatted for a CSV row.
+     */
+    private function firstValidationError(PersistenceFailedException $e): string
+    {
+        foreach ($e->getEntity()->getErrors() as $field => $messages) {
+            return sprintf('%s: %s', $field, (string)(is_array($messages) ? reset($messages) : $messages));
+        }
+
+        return 'The line could not be saved.';
     }
 
     /**

@@ -1,0 +1,12 @@
+job_type_code,product_category_code,warranty_scope,label,size_min_inch,size_max_inch,amount_rupees,payer
+installation,led_tv,not_applicable,Installation 24"-43",24,43,350.00,company
+installation,led_tv,not_applicable,Installation 45"-65",45,65,500.00,company
+demo_inspection,led_tv,not_applicable,Demo / site inspection,,,250.00,company
+service,led_tv,in_warranty,Service in warranty 24"-43",24,43,400.00,company
+service,led_tv,in_warranty,Service in warranty 45"-85",45,85,500.00,company
+exchange_delivery,led_tv,in_warranty,TV set exchange or delivery,,,700.00,company
+panel_backlight,led_tv,in_warranty,Open cell & backlight replacement and service,,,1000.00,company
+service,led_tv,out_of_warranty,Service out of warranty 24"-43",24,43,500.00,customer
+service,led_tv,out_of_warranty,Service out of warranty 45"-55",45,55,1000.00,customer
+service,led_tv,out_of_warranty,Service out of warranty 65"-85",65,85,1500.00,customer
+panel_backlight,led_tv,out_of_warranty,Open cell & backlight replacement and service (out of warranty),,,1500.00,customer
