@@ -1,4 +1,5 @@
 import { AuthProvider, useAuth } from './lib/auth'
+import { useAppBranding } from './lib/branding'
 import { LoginPage } from './pages/LoginPage'
 import { DeskShell } from './pages/DeskShell'
 import { FieldShell } from './pages/FieldShell'
@@ -13,6 +14,7 @@ import { FieldShell } from './pages/FieldShell'
  */
 function Root() {
   const { user, loading } = useAuth()
+  const { logo } = useAppBranding()
 
   // Avoids flashing the login screen at someone who is already signed in.
   if (loading) {
@@ -27,10 +29,12 @@ function Root() {
   }
 
   if (!user) {
-    return <LoginPage />
+    return <LoginPage logo={logo} />
   }
 
-  return user.landing === '/field' ? <FieldShell /> : <DeskShell />
+  // FieldShell's header is the technician's own initial, not portal
+  // branding, so it has no logo prop to receive.
+  return user.landing === '/field' ? <FieldShell /> : <DeskShell logo={logo} />
 }
 
 export default function App() {

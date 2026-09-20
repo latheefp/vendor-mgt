@@ -1088,7 +1088,7 @@ export interface TechnicianPayout {
   period_start: string
   period_end: string
   status: string
-  total_payout_paise: number
+  net_paise: number
   created: string
   technician?: { id: number; name: string; code: string }
   technician_payout_lines?: Array<{ id: number; description: string; amount_paise: number }>

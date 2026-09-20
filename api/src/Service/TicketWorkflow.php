@@ -137,6 +137,8 @@ class TicketWorkflow
             return ['ok' => false, 'errors' => ['company_id' => ['Select the company this job belongs to.']]];
         }
 
+        $data['service_center_id'] = $this->resolveServiceCenterId($companyId, $data);
+
         $errors = $this->intakeErrors($companyId, $data);
         if ($errors !== []) {
             return ['ok' => false, 'errors' => $errors];
@@ -269,6 +271,15 @@ class TicketWorkflow
             return ['ok' => false, 'errors' => ['company_id' => ['Select the company this job belongs to.']]];
         }
 
+        // An edit that omits this keeps the ticket where it already is,
+        // rather than reassigning a job someone may already be dispatched
+        // on just because the field came through blank.
+        $data['service_center_id'] = $this->resolveServiceCenterId(
+            $companyId,
+            $data,
+            (int)($ticket->service_center_id ?? 0),
+        );
+
         $errors = $this->intakeErrors($companyId, $data);
         if ($errors !== []) {
             return ['ok' => false, 'errors' => $errors];
@@ -349,6 +360,39 @@ class TicketWorkflow
         return $this->resolveCustomer($data);
     }
 
+    /**
+     * A service centre for the ticket, without forcing every caller to
+     * know one. The desk's own form already pre-fills this from the same
+     * company setting, but an import or any other caller that sends
+     * nothing for `service_center_id` gets the company's configured
+     * default rather than a flat rejection — that setting exists
+     * specifically to say what "no explicit choice" should mean here.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function resolveServiceCenterId(int $companyId, array $data, int $fallbackId = 0): int
+    {
+        $id = (int)($data['service_center_id'] ?? 0);
+        if ($id > 0) {
+            return $id;
+        }
+
+        if ($fallbackId > 0) {
+            return $fallbackId;
+        }
+
+        $code = $this->config->settings($companyId)->string(SettingCatalog::TICKET_DEFAULT_SERVICE_CENTER_CODE, '');
+        if ($code === '') {
+            return 0;
+        }
+
+        $serviceCenter = $this->fetchTable('ServiceCenters')
+            ->find()
+            ->where(['code' => $code, 'is_active' => true])
+            ->first();
+
+        return $serviceCenter !== null ? (int)$serviceCenter->id : 0;
+    }
 
     /**
      * Intake requirements, as this company defines them.

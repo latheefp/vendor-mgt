@@ -196,7 +196,7 @@ export function InvoicingPanel() {
       const created = await api.generatePayout(1)
       setMessage({
         type: 'success',
-        text: `Technician Payout #${created.payout_no} generated for ₹${(created.total_payout_paise / 100).toFixed(2)}`,
+        text: `Technician Payout #${created.payout_no} generated for ₹${(created.net_paise / 100).toFixed(2)}`,
       })
       void loadData()
     } catch (err: any) {
@@ -477,7 +477,7 @@ export function InvoicingPanel() {
                         {pay.period_start} to {pay.period_end}
                       </td>
                       <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">
-                        ₹{(pay.total_payout_paise / 100).toFixed(2)}
+                        ₹{(pay.net_paise / 100).toFixed(2)}
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-block rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300 capitalize">

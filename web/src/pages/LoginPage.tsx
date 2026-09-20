@@ -10,7 +10,7 @@ import { AppFooter } from '../components/AppFooter'
  * from a phone at the roadside, so it needs large targets, a visible
  * error, and nothing else competing for attention.
  */
-export function LoginPage() {
+export function LoginPage({ logo }: { logo?: string | null }) {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -43,9 +43,17 @@ export function LoginPage() {
       <div className="flex flex-1 items-center justify-center p-4">
         <div className="w-full max-w-sm">
           <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-2xl font-bold text-white shadow-lg shadow-brand-600/20">
-              G
-            </div>
+            {logo ? (
+              <img
+                src={logo}
+                alt="Portal logo"
+                className="mx-auto mb-4 h-14 w-14 rounded-2xl object-contain shadow-lg shadow-brand-600/20"
+              />
+            ) : (
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-2xl font-bold text-white shadow-lg shadow-brand-600/20">
+                G
+              </div>
+            )}
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
               Grand VendorService
             </h1>

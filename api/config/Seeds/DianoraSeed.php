@@ -53,10 +53,10 @@ class DianoraSeed extends BaseSeed
             // ours is what stops them being confused on a phone call.
             ['ticket.number_prefix', 'string', 'DIN'],
 
-            // Warranty status is decided from the serial and the bill date,
-            // and Dianora reimburses in-warranty work only on proof of
-            // both. Intake without them cannot be priced later.
-            ['ticket.require_serial_no', 'boolean', '1'],
+            // Warranty status is read off the bill date, so that still
+            // gates intake. Serial number no longer does — it's optional
+            // now rather than something a ticket needs to be opened.
+            ['ticket.require_serial_no', 'boolean', '0'],
             ['ticket.require_bill_date', 'boolean', '1'],
 
             // Clause 11 makes email the only valid channel, so a hold the

@@ -44,8 +44,15 @@ function monthBounds(date: Date): { start: string; end: string } {
  * would it cost to settle up with each of them right now" rather than
  * "what does this period's run owe them".
  */
+const PROFIT_LOSS_TABS: { key: 'pnl' | 'dues' | 'cash'; label: string }[] = [
+  { key: 'pnl', label: 'Profit & Loss' },
+  { key: 'dues', label: 'Technician Dues' },
+  { key: 'cash', label: 'Cash Balance' },
+]
+
 export function ProfitLossPanel() {
-  const [period, setPeriod] = useState(() => monthBounds(new Date(new Date().setMonth(new Date().getMonth() - 1))))
+  const [tab, setTab] = useState<'pnl' | 'dues' | 'cash'>('pnl')
+  const [period, setPeriod] = useState(() => monthBounds(new Date()))
   const [report, setReport] = useState<ProfitAndLossReport | null>(null)
   const [dues, setDues] = useState<TechnicianDuesReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -88,17 +95,35 @@ export function ProfitLossPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Profit &amp; Loss
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Every income and expense recorded against closed tickets, and what the service centre
-            kept.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+          Profit &amp; Loss
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Every income and expense recorded against closed tickets, what each technician is owed,
+          and what the service centre actually has in hand.
+        </p>
+      </div>
 
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
+        {PROFIT_LOSS_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              tab === t.key
+                ? 'bg-brand-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'pnl' && (
+        <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-end">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
@@ -195,9 +220,12 @@ export function ProfitLossPanel() {
           )}
         </>
       )}
+        </div>
+      )}
 
       {/* Technician dues — the outflow side that has no fixed billing
           cycle, so it is not covered by any period picker above. */}
+      {tab === 'dues' && (
       <div className="space-y-3">
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Pending payments to technicians</h2>
@@ -260,8 +288,9 @@ export function ProfitLossPanel() {
           )}
         </div>
       </div>
+      )}
 
-      <SavingsSection />
+      {tab === 'cash' && <SavingsSection />}
     </div>
   )
 }
