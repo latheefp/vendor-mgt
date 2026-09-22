@@ -39,7 +39,7 @@ class SparesController extends ApiController
         // endpoints. Moving it is not: a movement is the only record that
         // a part was ever here, so it carries whoever recorded it.
         $this->Authentication->allowUnauthenticated([
-            'catalogue', 'addPart', 'stock', 'holdings', 'movements', 'ageing',
+            'catalogue', 'addPart', 'editPart', 'stock', 'holdings', 'movements', 'ageing',
             'receive', 'issue', 'returnGood', 'writeOff', 'count',
             'returnDefectives', 'recordDefectiveCredit',
         ]);
@@ -83,6 +83,58 @@ class SparesController extends ApiController
         }
 
         return $this->respond($part, [], 201);
+    }
+
+    /**
+     * PUT /api/spares/catalogue/{id}
+     *
+     * The catalogue entry itself — cost, MRP, reorder level, active flag.
+     * Unlike a rate card or a frozen charge, a part's list price isn't
+     * something anything downstream has locked in: receipts and issues
+     * record their own quantities and reference the part by id, not by a
+     * copy of its price, so editing it in place doesn't corrupt history.
+     */
+    public function editPart(string $id): Response
+    {
+        $spareParts = $this->fetchTable('SpareParts');
+        $part = $spareParts->find()->where(['id' => (int)$id])->first();
+
+        if ($part === null) {
+            return $this->fail('not_found', 'Spare part not found.', 404);
+        }
+
+        $companyId = (int)$this->request->getData('company_id');
+        $partNo = trim((string)$this->request->getData('part_no'));
+        $name = trim((string)$this->request->getData('name'));
+
+        if ($companyId <= 0 || $partNo === '' || $name === '') {
+            return $this->fail('validation_error', 'Company, Part Number, and Part Name are required.', 422, [
+                'company_id' => $companyId <= 0 ? ['Select company'] : [],
+                'part_no' => $partNo === '' ? ['Part number is required'] : [],
+                'name' => $name === '' ? ['Part name is required'] : [],
+            ]);
+        }
+
+        $costRupees = (float)$this->request->getData('cost_rupees', 0);
+        $mrpRupees = (float)$this->request->getData('mrp_rupees', 0);
+        $isActive = $this->request->getData('is_active');
+
+        $part = $spareParts->patchEntity($part, [
+            'company_id' => $companyId,
+            'product_category_id' => $this->intOrNull('product_category_id'),
+            'part_no' => $partNo,
+            'name' => $name,
+            'cost_paise' => (int)round($costRupees * 100),
+            'mrp_paise' => (int)round($mrpRupees * 100),
+            'reorder_level' => (int)($this->request->getData('reorder_level') ?? 5),
+            'is_active' => $isActive === null ? $part->is_active : (bool)$isActive,
+        ]);
+
+        if (!$spareParts->save($part)) {
+            return $this->fail('validation_error', 'The spare part could not be updated.', 422, $part->getErrors());
+        }
+
+        return $this->respond($part);
     }
 
     // -----------------------------------------------------------------

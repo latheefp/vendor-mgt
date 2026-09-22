@@ -184,6 +184,184 @@ class TicketAdjustmentService
     }
 
     /**
+     * Pay a technician a cost the rate card never priced — a lump sum, an
+     * extra service charge, bata/transport — bound to this ticket.
+     *
+     * Deliberately the mirror of add(): it only runs on a frozen ticket,
+     * appends rather than edits, and needs the same authorisation trail.
+     * It differs in two ways that matter. First, the ledger is not a
+     * choice — it is always technician_payable, because this is never a
+     * correction to what a company or customer was billed, only money we
+     * choose to pay a technician on top of the job; with no offsetting
+     * receivable line it comes straight out of margin, same as paying it
+     * by hand out of the till. Second, it names a technician_expense_type
+     * instead of taking free text, so "how much did we pay out in bata
+     * last quarter" is a query against a coded column, not a grep through
+     * adjustment reasons.
+     *
+     * @param array<string, mixed> $data
+     * @return array{ok: true, charge_id: int, line: array<string, mixed>, totals: array<string, mixed>}
+     *        |array{ok: false, code: string, errors: array<string, list<string>>}
+     */
+    public function addTechnicianExpense(int $ticketId, array $data, ?int $actorUserId = null): array
+    {
+        try {
+            $ticket = $this->fetchTable('Tickets')->get($ticketId);
+        } catch (RecordNotFoundException) {
+            return [
+                'ok' => false,
+                'code' => 'not_found',
+                'errors' => ['ticket_id' => ['No such ticket.']],
+            ];
+        }
+
+        // Mirrors add(): before the freeze the job is still being priced,
+        // and a technician expense written now would have no closed bill
+        // to sit alongside. Closing the ticket is what gives it a home.
+        if ($ticket->charges_frozen_at === null) {
+            return [
+                'ok' => false,
+                'code' => 'not_frozen',
+                'errors' => ['ticket' => [
+                    'This ticket has no frozen charges yet. Close it first, '
+                    . 'then record the technician expense against it.',
+                ]],
+            ];
+        }
+
+        $expenseTypeId = (int)($data['technician_expense_type_id'] ?? 0);
+        if ($expenseTypeId <= 0) {
+            return [
+                'ok' => false,
+                'code' => 'validation_error',
+                'errors' => ['technician_expense_type_id' => ['Choose what kind of expense this is.']],
+            ];
+        }
+
+        // Resolved through CompanyConfigRepository, not a raw query: a
+        // company can shadow or suppress a shared expense type the same way
+        // it can a hold reason, and picking the id straight off the table
+        // would accept a shared row the company has deliberately switched
+        // off in favour of its own.
+        $resolved = (new CompanyConfigRepository())->masterList('technician_expense_types', (int)$ticket->company_id);
+        $expenseTypeRow = null;
+        foreach ($resolved as $row) {
+            if ((int)$row['id'] === $expenseTypeId) {
+                $expenseTypeRow = $row;
+
+                break;
+            }
+        }
+
+        if ($expenseTypeRow === null) {
+            return [
+                'ok' => false,
+                'code' => 'validation_error',
+                'errors' => ['technician_expense_type_id' => [
+                    'Not an expense type this company recognises.',
+                ]],
+            ];
+        }
+
+        $reason = trim((string)($data['reason'] ?? ''));
+        if ($reason === '') {
+            return [
+                'ok' => false,
+                'code' => 'validation_error',
+                'errors' => ['reason' => [
+                    'Say why this is being paid. Without one it is indistinguishable '
+                    . 'from a mistake when it surfaces in an audit.',
+                ]],
+            ];
+        }
+
+        $raw = $data['amount'] ?? '';
+        if ($raw === '' || $raw === null) {
+            return [
+                'ok' => false,
+                'code' => 'validation_error',
+                'errors' => ['amount' => ['How much is being paid?']],
+            ];
+        }
+
+        try {
+            $amount = Money::parse((string)$raw);
+        } catch (InvalidArgumentException $e) {
+            return [
+                'ok' => false,
+                'code' => 'validation_error',
+                'errors' => ['amount' => [$e->getMessage()]],
+            ];
+        }
+
+        // Unlike an adjustment this is never a credit: it is always money
+        // leaving on this ticket, so a zero or negative figure is a typo,
+        // not a legitimate reversal. Reversing one is remove() or a payout
+        // line override, same as any other charge line.
+        if (!$amount->isPositive()) {
+            return [
+                'ok' => false,
+                'code' => 'validation_error',
+                'errors' => ['amount' => ['Enter how much the technician is being paid.']],
+            ];
+        }
+
+        $expenseTypeName = (string)$expenseTypeRow['name'];
+
+        $line = (new ChargeBuilder())->technicianExpense(
+            $amount,
+            $expenseTypeName,
+            $expenseTypeId,
+            $reason,
+            $actorUserId,
+        );
+
+        $charges = $this->fetchTable('TicketCharges');
+        $row = $line->toRow() + [
+            'ticket_id' => $ticketId,
+            'rate_card_id' => $ticket->rate_card_id,
+            'company_agreement_id' => $ticket->company_agreement_id,
+            'computed_at' => DateTime::now(),
+            'computed_by_user_id' => $actorUserId,
+            'is_frozen' => true,
+            'settlement_status' => 'open',
+            'notes' => $reason,
+        ];
+
+        $entity = $charges->newEntity($row);
+        if (!$charges->save($entity)) {
+            return ['ok' => false, 'code' => 'validation_error', 'errors' => $entity->getErrors()];
+        }
+
+        $this->workflow->logEvent(
+            $ticketId,
+            'technician_expense_added',
+            null,
+            null,
+            $actorUserId,
+            sprintf('%s technician expense (%s): %s', $amount->format(), $expenseTypeName, $reason),
+            [
+                'ticket_charge_id' => (int)$entity->id,
+                'technician_expense_type_id' => $expenseTypeId,
+                'amount_paise' => $amount->paise,
+                'reason' => $reason,
+            ],
+        );
+
+        return [
+            'ok' => true,
+            'charge_id' => (int)$entity->id,
+            'line' => [
+                'type' => $line->type->value,
+                'ledger' => $line->ledger->value,
+                'description' => $line->description,
+                'amount' => $line->amount->jsonSerialize(),
+            ],
+            'totals' => $this->ledger($ticketId)['totals'],
+        ];
+    }
+
+    /**
      * Record additional service agreed on an open job — a BOQ line.
      *
      * The mirror image of add(): that one refuses an unfrozen ticket, this
@@ -412,6 +590,7 @@ class TicketAdjustmentService
                 // hand, surfaced so the desk sees it without opening JSON.
                 'is_manual_base' => $type === ChargeLineType::Base
                     && ($snapshot['override']['manual'] ?? false) === true,
+                'is_technician_expense' => $type === ChargeLineType::TechnicianExpense,
                 'settlement_status' => $row['settlement_status'],
                 'computed_at' => $row['computed_at'],
                 'snapshot' => $snapshot,

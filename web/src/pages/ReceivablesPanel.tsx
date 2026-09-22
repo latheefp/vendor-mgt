@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import {
   api,
   ApiError,
@@ -441,7 +442,7 @@ function CompanyLedgerModal({ receivable, onClose, onChanged }: CompanyLedgerMod
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
 

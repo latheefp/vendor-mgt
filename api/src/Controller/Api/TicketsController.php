@@ -294,6 +294,7 @@ class TicketsController extends ApiController
             'symptoms' => $lists['symptoms'],
             'resolutions' => $lists['resolutions'],
             'hold_reasons' => $lists['hold_reasons'],
+            'technician_expense_types' => $lists['technician_expense_types'],
             'warranty_scopes' => [
                 ['code' => 'in_warranty', 'name' => 'In Warranty'],
                 ['code' => 'out_of_warranty', 'name' => 'Out of Warranty'],
@@ -940,6 +941,40 @@ class TicketsController extends ApiController
             return $this->fail(
                 (string)($result['code'] ?? 'validation_error'),
                 'The adjustment could not be recorded.',
+                $status,
+                $result['errors'] ?? [],
+            );
+        }
+
+        return $this->respond($result, [], 201);
+    }
+
+    /**
+     * POST /api/tickets/{id}/technician-expenses
+     *
+     * A technician cost the rate card never priced — a lump sum, an extra
+     * service charge, bata/transport — named against a technician expense
+     * type and bound to this ticket. Always lands on technician_payable,
+     * so it comes out of margin with nothing to choose or offset.
+     */
+    public function addTechnicianExpense(?string $id = null): Response
+    {
+        $result = (new TicketAdjustmentService())->addTechnicianExpense(
+            $this->ticketId($id),
+            (array)$this->request->getData(),
+            $this->currentUserId(),
+        );
+
+        if (($result['ok'] ?? false) === false) {
+            $status = match ($result['code'] ?? '') {
+                'not_found' => 404,
+                'not_frozen' => 409,
+                default => 422,
+            };
+
+            return $this->fail(
+                (string)($result['code'] ?? 'validation_error'),
+                'The technician expense could not be recorded.',
                 $status,
                 $result['errors'] ?? [],
             );

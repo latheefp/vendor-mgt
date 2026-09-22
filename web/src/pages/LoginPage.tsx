@@ -47,10 +47,10 @@ export function LoginPage({ logo }: { logo?: string | null }) {
               <img
                 src={logo}
                 alt="Portal logo"
-                className="mx-auto mb-4 h-14 w-14 rounded-2xl object-contain shadow-lg shadow-brand-600/20"
+                className="mx-auto mb-4 h-14 w-14 rounded-xl object-contain shadow-md shadow-ink-950/10"
               />
             ) : (
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-2xl font-bold text-white shadow-lg shadow-brand-600/20">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-ink-900 text-2xl font-bold text-white shadow-md shadow-ink-950/10">
                 G
               </div>
             )}
@@ -64,66 +64,69 @@ export function LoginPage({ logo }: { logo?: string | null }) {
 
           <form
             onSubmit={onSubmit}
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
           >
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Email
-              </span>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-                autoComplete="username"
-                placeholder="you@grandservice.in"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              />
-            </label>
-
-            <label className="mt-4 block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Password
-              </span>
-              <div className="relative">
+            <div className="h-1 bg-brand-600" aria-hidden="true" />
+            <div className="p-6">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Email
+                </span>
                 <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
-                  autoComplete="current-password"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-16 text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  autoFocus
+                  autoComplete="username"
+                  placeholder="you@grandservice.in"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
-                {/* Typing a password on a phone keyboard in sunlight is
-                    error-prone; letting people check it prevents most of the
-                    failed attempts that would otherwise trip the lockout. */}
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute inset-y-0 right-0 px-3 text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              </label>
+
+              <label className="mt-4 block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Password
+                </span>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-16 text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                  {/* Typing a password on a phone keyboard in sunlight is
+                      error-prone; letting people check it prevents most of the
+                      failed attempts that would otherwise trip the lockout. */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute inset-y-0 right-0 px-3 text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </label>
+
+              {error && (
+                <p
+                  role="alert"
+                  className="mt-4 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300"
                 >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </label>
+                  {error}
+                </p>
+              )}
 
-            {error && (
-              <p
-                role="alert"
-                className="mt-4 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300"
+              <button
+                type="submit"
+                disabled={busy}
+                className="mt-6 w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={busy}
-              className="mt-6 w-full rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? 'Signing in…' : 'Sign in'}
-            </button>
+                {busy ? 'Signing in…' : 'Sign in'}
+              </button>
+            </div>
           </form>
 
           {/*

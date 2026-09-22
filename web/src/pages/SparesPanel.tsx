@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { PackagePlus } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import type {
   DefectiveReturnDue,
@@ -48,6 +49,7 @@ export function SparesPanel() {
 
   // Modals
   const [addPartModalOpen, setAddPartModalOpen] = useState(false)
+  const [editPartModalOpen, setEditPartModalOpen] = useState(false)
   const [receiveModalOpen, setReceiveModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
   // Bumped after a receipt so the stock balances behind the modal reload.
@@ -63,6 +65,17 @@ export function SparesPanel() {
     cost_rupees: '',
     mrp_rupees: '',
     reorder_level: '5',
+  })
+
+  const [editPartForm, setEditPartForm] = useState({
+    id: 0,
+    company_id: '',
+    part_no: '',
+    name: '',
+    cost_rupees: '',
+    mrp_rupees: '',
+    reorder_level: '5',
+    is_active: true,
   })
 
   // `received_at` starts blank on purpose. Clause 10 counts from the day
@@ -156,6 +169,41 @@ export function SparesPanel() {
     }
   }
 
+  const openEditPart = (part: SparePartOption) => {
+    setEditPartForm({
+      id: part.id,
+      company_id: String(part.company_id),
+      part_no: part.part_no,
+      name: part.name,
+      cost_rupees: String(part.cost_paise / 100),
+      mrp_rupees: part.mrp_paise !== null ? String(part.mrp_paise / 100) : '',
+      reorder_level: String(part.reorder_level),
+      is_active: part.is_active,
+    })
+    setEditPartModalOpen(true)
+  }
+
+  const handleEditPartSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setMessage(null)
+    try {
+      await api.updateSparePart(editPartForm.id, {
+        company_id: Number(editPartForm.company_id),
+        part_no: editPartForm.part_no,
+        name: editPartForm.name,
+        cost_rupees: Number(editPartForm.cost_rupees),
+        mrp_rupees: Number(editPartForm.mrp_rupees),
+        reorder_level: Number(editPartForm.reorder_level),
+        is_active: editPartForm.is_active,
+      })
+      setMessage({ type: 'success', text: `Spare Part "${editPartForm.part_no}" updated.` })
+      setEditPartModalOpen(false)
+      await loadCatalogue()
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to update spare part' })
+    }
+  }
+
   const handleReceiveSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setMessage(null)
@@ -214,9 +262,9 @@ export function SparesPanel() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setReceiveModalOpen(true)}
-            className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
           >
-            📦 Book in a Challan (Receive Stock)
+            <PackagePlus className="h-3.5 w-3.5" /> Book in a Challan (Receive Stock)
           </button>
           <button
             onClick={() => setIssueModalOpen(true)}
@@ -283,7 +331,14 @@ export function SparesPanel() {
         <StockTab centreId={centre} reloadKey={stockVersion} onReceive={() => setReceiveModalOpen(true)} />
       )}
       {tab === 'holdings' && <HoldingsTab centreId={centre} />}
-      {tab === 'catalogue' && <CatalogueTab parts={catalogueParts} companies={companies} onReceive={(partId) => { setReceiveForm(f => ({ ...f, spare_part_id: String(partId) })); setReceiveModalOpen(true); }} />}
+      {tab === 'catalogue' && (
+        <CatalogueTab
+          parts={catalogueParts}
+          companies={companies}
+          onReceive={(partId) => { setReceiveForm(f => ({ ...f, spare_part_id: String(partId) })); setReceiveModalOpen(true); }}
+          onEdit={openEditPart}
+        />
+      )}
 
       {/* ADD NEW SPARE PART MODAL */}
       {addPartModalOpen && (
@@ -397,6 +452,130 @@ export function SparesPanel() {
                   className="rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium text-white hover:bg-brand-700"
                 >
                   Save Spare Part
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT SPARE PART MODAL */}
+      {editPartModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">
+              Edit Spare Part
+            </h3>
+            <form onSubmit={handleEditPartSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Company *
+                </label>
+                <select
+                  required
+                  value={editPartForm.company_id}
+                  onChange={(e) => setEditPartForm({ ...editPartForm, company_id: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Part Number (SKU) *
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={editPartForm.part_no}
+                  onChange={(e) => setEditPartForm({ ...editPartForm, part_no: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Part Description / Name *
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={editPartForm.name}
+                  onChange={(e) => setEditPartForm({ ...editPartForm, name: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Unit Cost (₹) *
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    value={editPartForm.cost_rupees}
+                    onChange={(e) => setEditPartForm({ ...editPartForm, cost_rupees: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    MRP (₹) *
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    value={editPartForm.mrp_rupees}
+                    onChange={(e) => setEditPartForm({ ...editPartForm, mrp_rupees: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Reorder Level (Units)
+                </label>
+                <input
+                  type="number"
+                  value={editPartForm.reorder_level}
+                  onChange={(e) => setEditPartForm({ ...editPartForm, reorder_level: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={editPartForm.is_active}
+                  onChange={(e) => setEditPartForm({ ...editPartForm, is_active: e.target.checked })}
+                  className="rounded border-slate-300 dark:border-slate-700"
+                />
+                Active (visible for issue &amp; receipt)
+              </label>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditPartModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium text-white hover:bg-brand-700"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
@@ -622,10 +801,12 @@ function CatalogueTab({
   parts,
   companies,
   onReceive,
+  onEdit,
 }: {
   parts: SparePartOption[]
   companies: Array<{ id: number; name: string }>
   onReceive: (partId: number) => void
+  onEdit: (part: SparePartOption) => void
 }) {
   const [search, setSearch] = useState('')
   const [selectedCompany, setSelectedCompany] = useState('')
@@ -689,12 +870,17 @@ function CatalogueTab({
               </tr>
             ) : (
               filtered.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                <tr key={p.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 ${p.is_active ? '' : 'opacity-50'}`}>
                   <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900 dark:text-white">
                     {p.part_no}
                   </td>
                   <td className="px-4 py-3 text-slate-800 dark:text-slate-200 font-medium">
                     {p.name}
+                    {!p.is_active && (
+                      <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                        Inactive
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                     {p.company?.name || `Company #${p.company_id}`}
@@ -706,12 +892,20 @@ function CatalogueTab({
                     {p.mrp_paise !== null ? rupees(p.mrp_paise) : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => onReceive(p.id)}
-                      className="rounded bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
-                    >
-                      + Book Receipt
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => onEdit(p)}
+                        className="rounded bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => onReceive(p.id)}
+                        className="rounded bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      >
+                        + Book Receipt
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -1010,9 +1204,9 @@ function StockTab({
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={onReceive}
-          className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
         >
-          📦 Book in a challan
+          <PackagePlus className="h-4 w-4" /> Book in a challan
         </button>
         {centreId === undefined && (
           <span className="text-xs text-slate-500 dark:text-slate-400">

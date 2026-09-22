@@ -1213,6 +1213,10 @@ class SettlementService
                 // Already negative, so it reduces the net by summing.
                 'technician_penalty_recovery' => $totals['penalty_recovery_paise'] += $amount,
                 'travel' => $totals['travel_paise'] += $amount,
+                // A lump sum, service charge or bata line — not computed by
+                // the rate card, but still gross pay to the technician, so
+                // it sits in the same bucket as the job payout itself.
+                'technician_expense' => $totals['gross_paise'] += $amount,
                 default => $totals['gross_paise'] += $amount,
             };
         }
@@ -1741,6 +1745,65 @@ class SettlementService
             'TicketCharges.is_frozen' => true,
             'Tickets.closed_at >=' => $periodStart . ' 00:00:00',
             'Tickets.closed_at <=' => $periodEnd . ' 23:59:59',
+        ];
+    }
+
+    /**
+     * The tickets behind one row of the P&L breakdown — same ledger, same
+     * line type, same period, the summary just adds them up.
+     *
+     * Reuses the two building blocks {@see profitAndLoss()} already relies
+     * on: `pnlConditions()` for the identical period/frozen scope, and
+     * `groupLinesByTicket()`, the same grouping an invoice or payout detail
+     * view uses to answer "which tickets make up this total".
+     *
+     * @return array<string, mixed>
+     */
+    public function profitAndLossTicketDetail(
+        Ledger $ledger,
+        ChargeLineType $lineType,
+        string $periodStart,
+        string $periodEnd,
+    ): array {
+        $rows = $this->fetchTable('TicketCharges')->find()
+            ->select([
+                'TicketCharges.id',
+                'TicketCharges.ticket_id',
+                'TicketCharges.line_type',
+                'TicketCharges.ledger',
+                'TicketCharges.description',
+                'TicketCharges.quantity',
+                'TicketCharges.unit_amount_paise',
+                'TicketCharges.amount_paise',
+                'ticket_no' => 'Tickets.ticket_no',
+            ])
+            ->join(['Tickets' => [
+                'table' => 'tickets',
+                'type' => 'INNER',
+                'conditions' => 'Tickets.id = TicketCharges.ticket_id',
+            ]])
+            ->where($this->pnlConditions($periodStart, $periodEnd) + [
+                'TicketCharges.ledger' => $ledger->value,
+                'TicketCharges.line_type' => $lineType->value,
+            ])
+            ->orderByAsc('Tickets.closed_at')
+            ->orderByAsc('TicketCharges.id')
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        $total = array_sum(array_map(static fn(array $row): int => (int)$row['amount_paise'], $rows));
+
+        return [
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
+            'ledger' => $ledger->value,
+            'ledger_label' => $ledger->label(),
+            'line_type' => $lineType->value,
+            'line_type_label' => $lineType->label(),
+            'total' => Money::fromPaise($total)->jsonSerialize(),
+            'ticket_count' => count(array_unique(array_column($rows, 'ticket_id'))),
+            'tickets' => $this->groupLinesByTicket($rows),
         ];
     }
 

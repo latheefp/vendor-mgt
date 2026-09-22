@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace App\Controller\Api;
 
+use App\Domain\Enum\ChargeLineType;
+use App\Domain\Enum\Ledger;
 use App\Domain\Enum\PayoutMethod;
 use App\Service\SettlementService;
 use App\Service\SpareService;
@@ -27,7 +29,7 @@ class SettlementController extends ApiController
         $this->Authentication->allowUnauthenticated([
             'invoices', 'invoice', 'previewInvoice', 'payouts', 'payout',
             'creditExposure', 'receivables', 'defectiveReturns', 'spareAgeing',
-            'profitAndLoss', 'technicianDues',
+            'profitAndLoss', 'profitAndLossDetail', 'technicianDues',
         ]);
     }
 
@@ -288,6 +290,29 @@ class SettlementController extends ApiController
         [$start, $end] = $this->period();
 
         return $this->respond((new SettlementService())->profitAndLoss($start, $end));
+    }
+
+    /**
+     * GET /api/reports/profit-loss/tickets
+     *
+     * The tickets behind one row of the breakdown above — same ledger,
+     * same line type, same period, just not summed away.
+     */
+    public function profitAndLossDetail(): Response
+    {
+        [$start, $end] = $this->period();
+
+        $ledger = Ledger::tryFrom((string)$this->request->getQuery('ledger'));
+        $lineType = ChargeLineType::tryFrom((string)$this->request->getQuery('line_type'));
+
+        if ($ledger === null || $lineType === null) {
+            return $this->fail('validation_error', 'A valid ledger and line type are required.', 422, [
+                'ledger' => $ledger === null ? ['Not a recognised ledger.'] : [],
+                'line_type' => $lineType === null ? ['Not a recognised line type.'] : [],
+            ]);
+        }
+
+        return $this->respond((new SettlementService())->profitAndLossTicketDetail($ledger, $lineType, $start, $end));
     }
 
     /**

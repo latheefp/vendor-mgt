@@ -3,26 +3,43 @@
 /*
   Design tokens.
 
+  Brand hue is a petrol teal (~196°), not the default indigo/azure every
+  admin template ships with — it reads as "workshop instrument" rather
+  than "SaaS gradient" and stays clear of the amber/purple/emerald/rose
+  already doing semantic work for ticket status elsewhere in the app.
+
+  `ink` is the shell's own near-black, tinted toward the same hue instead
+  of flat Tailwind slate, so the sidebar and header read as one material
+  rather than a neutral template chrome bolted onto a colored accent.
+
   Two shells share this palette but not their density: the desk runs on a
   desktop all day and can take tight spacing, while the field screens are
   used one-handed, outdoors, on a phone — so their controls are sized for
   a thumb and for sunlight rather than for information density.
 */
 @theme {
-  --color-brand-50: oklch(0.97 0.02 250);
-  --color-brand-100: oklch(0.94 0.04 250);
-  --color-brand-200: oklch(0.88 0.07 250);
-  --color-brand-300: oklch(0.79 0.11 250);
-  --color-brand-400: oklch(0.68 0.15 250);
-  --color-brand-500: oklch(0.59 0.18 250);
-  --color-brand-600: oklch(0.51 0.19 252);
-  --color-brand-700: oklch(0.44 0.17 254);
-  --color-brand-800: oklch(0.38 0.14 255);
-  --color-brand-900: oklch(0.32 0.11 256);
+  --color-brand-50: oklch(0.97 0.015 196);
+  --color-brand-100: oklch(0.93 0.035 196);
+  --color-brand-200: oklch(0.85 0.06 196);
+  --color-brand-300: oklch(0.74 0.085 196);
+  --color-brand-400: oklch(0.63 0.105 195);
+  --color-brand-500: oklch(0.53 0.11 195);
+  --color-brand-600: oklch(0.45 0.105 195);
+  --color-brand-700: oklch(0.38 0.09 196);
+  --color-brand-800: oklch(0.32 0.075 197);
+  --color-brand-900: oklch(0.26 0.06 198);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --color-ink-950: oklch(0.19 0.014 212);
+  --color-ink-900: oklch(0.23 0.016 211);
+  --color-ink-800: oklch(0.29 0.018 210);
+  --color-ink-700: oklch(0.36 0.018 209);
+  --color-ink-600: oklch(0.46 0.016 208);
+  --color-ink-400: oklch(0.67 0.012 206);
+
+  --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
 }
 
 :root {
@@ -37,6 +54,7 @@ body,
 
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
+  font-family: var(--font-sans);
 }
 
 @media (prefers-color-scheme: dark) {

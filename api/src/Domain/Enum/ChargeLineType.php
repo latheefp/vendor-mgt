@@ -60,6 +60,16 @@ enum ChargeLineType: string
      */
     case Adjustment = 'adjustment';
 
+    /**
+     * A technician cost the rate card never priced — a lump sum, an
+     * extra service charge, bata/transport — recorded against a named
+     * `technician_expense_type` rather than free-form like Adjustment.
+     * Lands on technician_payable with no matching receivable/collection
+     * line, so it comes straight out of margin, same as paying it by hand
+     * out of the till. See TicketAdjustmentService::addTechnicianExpense().
+     */
+    case TechnicianExpense = 'technician_expense';
+
     public function label(): string
     {
         return match ($this) {
@@ -75,6 +85,7 @@ enum ChargeLineType: string
             self::TechnicianPenaltyRecovery => 'Penalty recovery',
             self::Boq => 'Additional service',
             self::Adjustment => 'Adjustment',
+            self::TechnicianExpense => 'Technician expense',
         };
     }
 }

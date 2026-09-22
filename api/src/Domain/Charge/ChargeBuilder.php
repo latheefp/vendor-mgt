@@ -365,4 +365,38 @@ final readonly class ChargeBuilder
             ],
         );
     }
+
+    /**
+     * A technician cost the rate card never priced — a lump sum, an extra
+     * service charge, bata/transport — named against a technician expense
+     * type rather than typed as free text.
+     *
+     * Always lands on technician_payable. There is deliberately no ledger
+     * parameter: unlike an adjustment this is never a correction to what a
+     * company or customer was billed, only ever money we choose to pay a
+     * technician on top of the job, so it always comes straight out of
+     * margin.
+     */
+    public function technicianExpense(
+        Money $amount,
+        string $expenseTypeName,
+        int $expenseTypeId,
+        string $reason,
+        ?int $authorisedByUserId = null,
+    ): ChargeLine {
+        return new ChargeLine(
+            type: ChargeLineType::TechnicianExpense,
+            ledger: Ledger::TechnicianPayable,
+            description: sprintf('%s: %s', $expenseTypeName, $reason),
+            amount: $amount,
+            sourceRefs: ['technician_expense_type_id' => $expenseTypeId],
+            snapshot: [
+                'expense_type_id' => $expenseTypeId,
+                'expense_type_name' => $expenseTypeName,
+                'reason' => $reason,
+                'authorised_by_user_id' => $authorisedByUserId,
+                'recorded_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+            ],
+        );
+    }
 }

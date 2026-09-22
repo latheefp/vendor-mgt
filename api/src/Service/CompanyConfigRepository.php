@@ -47,6 +47,7 @@ class CompanyConfigRepository
         'symptoms' => 'Symptoms',
         'resolutions' => 'Resolutions',
         'hold_reasons' => 'HoldReasons',
+        'technician_expense_types' => 'TechnicianExpenseTypes',
     ];
 
     private const CACHE_CONFIG = 'default';

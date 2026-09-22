@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { CheckCircle2, ClipboardList, PackageX, RefreshCw, UserX } from 'lucide-react'
 import { api, type DashboardStats } from '../lib/api'
 
 interface DashboardPanelProps {
@@ -84,41 +85,35 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
         </div>
         <button
           onClick={() => void loadStats()}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
-          <span>↻</span> Refresh Live Data
+          <RefreshCw className="h-3.5 w-3.5" /> Refresh live data
         </button>
       </div>
 
-      {/* Top Metric Cards (KPI Grid) */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Open Tickets
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
-              📋
-            </span>
+      {/* Summary strip: one ledger of the four headline counts, rather than
+          four separate widget cards each carrying their own border and
+          shadow. */}
+      <div className="grid grid-cols-2 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+        <div className="p-5">
+          <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+            <ClipboardList className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">Open tickets</span>
           </div>
-          <div className="mt-3 text-3xl font-extrabold text-slate-900 dark:text-white">
+          <div className="mt-2 text-3xl font-semibold tabular text-slate-900 dark:text-white">
             {stats?.open_tickets ?? 0}
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {inProgress} active in-progress
+            {inProgress} active in progress
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Unassigned Jobs
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-              ⏳
-            </span>
+        <div className="p-5">
+          <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+            <UserX className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">Unassigned jobs</span>
           </div>
-          <div className="mt-3 text-3xl font-extrabold text-amber-600 dark:text-amber-400">
+          <div className="mt-2 text-3xl font-semibold tabular text-amber-600 dark:text-amber-400">
             {stats?.unassigned_tickets ?? 0}
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -126,16 +121,12 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Closed Today
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-              ✓
-            </span>
+        <div className="p-5">
+          <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">Closed today</span>
           </div>
-          <div className="mt-3 text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
+          <div className="mt-2 text-3xl font-semibold tabular text-emerald-600 dark:text-emerald-400">
             {stats?.closed_today ?? 0}
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -143,16 +134,12 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Pending Defective Spares
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
-              📦
-            </span>
+        <div className="p-5">
+          <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
+            <PackageX className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">Pending defective spares</span>
           </div>
-          <div className="mt-3 text-3xl font-extrabold text-purple-600 dark:text-purple-400">
+          <div className="mt-2 text-3xl font-semibold tabular text-purple-600 dark:text-purple-400">
             {stats?.pending_spares ?? 0}
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -164,7 +151,7 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
       {/* Main Grid: Ticket Statuses & Company Distribution */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Ticket Status Breakdown */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
             Ticket Pipeline & Status Breakdown
           </h2>
@@ -205,7 +192,7 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
         </div>
 
         {/* Company Job Distribution */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
             Company Distribution
           </h2>
@@ -278,7 +265,7 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
       </div>
 
       {/* Recent Event Audit Stream */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="mb-1 text-base font-bold text-slate-900 dark:text-white">
           Live Operational Activity Stream
         </h2>
@@ -298,8 +285,8 @@ export function DashboardPanel({ onNavigate }: DashboardPanelProps) {
                     <p className="truncate text-xs font-medium text-slate-900 dark:text-white">
                       {ev.description || ev.event_type}
                     </p>
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">
-                      Event: {ev.event_type}
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {ev.event_type}
                     </span>
                   </div>
                 </div>

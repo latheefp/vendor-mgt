@@ -120,6 +120,10 @@ return function (RouteBuilder $routes): void {
         // to price extra work without freezing the ticket mid-job.
         $builder->post('/tickets/{id}/charges', ['controller' => 'Tickets', 'action' => 'addServiceLine', 'prefix' => 'Api']);
         $builder->post('/tickets/{id}/adjustments', ['controller' => 'Tickets', 'action' => 'addAdjustment', 'prefix' => 'Api']);
+        // A technician cost the rate card never priced, named against an
+        // editable expense type rather than typed as free text. Always
+        // lands on technician_payable — see addTechnicianExpense().
+        $builder->post('/tickets/{id}/technician-expenses', ['controller' => 'Tickets', 'action' => 'addTechnicianExpense', 'prefix' => 'Api']);
         $builder->delete('/tickets/{id}/charges/{charge_id}', ['controller' => 'Tickets', 'action' => 'removeCharge', 'prefix' => 'Api']);
         // Notes live on the same append-only trail as the status changes, so
         // the timeline reads as one story.
@@ -216,6 +220,11 @@ return function (RouteBuilder $routes): void {
         // centre actually kept.
         $builder->get('/reports/profit-loss', ['controller' => 'Settlement', 'action' => 'profitAndLoss', 'prefix' => 'Api']);
 
+        // The tickets behind one row of the breakdown above.
+        $builder->get('/reports/profit-loss/tickets', [
+            'controller' => 'Settlement', 'action' => 'profitAndLossDetail', 'prefix' => 'Api',
+        ]);
+
         // ---- the service centre's own cash position --------------
         // A different figure from the P&L above: this only moves when
         // cash genuinely does — an invoice payment landing, a technician
@@ -270,6 +279,7 @@ return function (RouteBuilder $routes): void {
         // part while nobody is looking at it.
         $builder->get('/spares/catalogue', ['controller' => 'Spares', 'action' => 'catalogue', 'prefix' => 'Api']);
         $builder->post('/spares/catalogue', ['controller' => 'Spares', 'action' => 'addPart', 'prefix' => 'Api']);
+        $builder->put('/spares/catalogue/{id}', ['controller' => 'Spares', 'action' => 'editPart', 'prefix' => 'Api']);
         $builder->get('/spares/stock', ['controller' => 'Spares', 'action' => 'stock', 'prefix' => 'Api']);
         $builder->get('/spares/holdings', ['controller' => 'Spares', 'action' => 'holdings', 'prefix' => 'Api']);
         $builder->post('/spares/receive', ['controller' => 'Spares', 'action' => 'receive', 'prefix' => 'Api']);

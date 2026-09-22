@@ -66,6 +66,11 @@ final readonly class ChargeLine
         return $this->sourceRefs['ticket_spare_id'] ?? null;
     }
 
+    public function technicianExpenseTypeId(): ?int
+    {
+        return $this->sourceRefs['technician_expense_type_id'] ?? null;
+    }
+
     /**
      * Row shape for the ticket_charges table.
      *
@@ -84,6 +89,7 @@ final readonly class ChargeLine
             'sla_rule_id' => $this->slaRuleId(),
             'technician_rate_id' => $this->technicianRateId(),
             'ticket_spare_id' => $this->ticketSpareId(),
+            'technician_expense_type_id' => $this->technicianExpenseTypeId(),
             'calc_snapshot' => $this->snapshot,
         ];
     }

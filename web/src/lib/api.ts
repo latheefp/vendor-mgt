@@ -358,6 +358,9 @@ export const api = {
   createSparePart: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>('/spares/catalogue', { method: 'POST', body: payload }),
 
+  updateSparePart: (id: number, payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/spares/catalogue/${id}`, { method: 'PUT', body: payload }),
+
   spareStock: (params?: { company_id?: number; service_center_id?: number }) =>
     requestEnvelope<SpareStockRow[], SpareStockSummary>('/spares/stock' + queryString(params)),
 
@@ -503,6 +506,19 @@ export const api = {
       { method: 'POST', body: adjustment },
     ),
 
+  /** A technician cost the rate card never priced — a lump sum, an extra
+   *  service charge, bata/transport — named against a technician expense
+   *  type. Always lands on technician_payable, so it comes out of margin.
+   *  Only allowed once the ticket's charges are frozen. */
+  addTicketTechnicianExpense: (
+    id: number,
+    expense: { technician_expense_type_id: number; amount: string; reason: string },
+  ) =>
+    request<{ charge_id: number; line: RatePreviewLine; totals: Record<string, Money> }>(
+      `/tickets/${id}/technician-expenses`,
+      { method: 'POST', body: expense },
+    ),
+
   removeTicketCharge: (id: number, chargeId: number) =>
     request<Ticket>(`/tickets/${id}/charges/${chargeId}`, { method: 'DELETE' }),
 
@@ -575,6 +591,13 @@ export const api = {
     request<ProfitAndLossReport>(
       '/reports/profit-loss' +
         (periodStart && periodEnd ? `?period_start=${periodStart}&period_end=${periodEnd}` : ''),
+    ),
+
+  /** The tickets behind one row of the breakdown above. */
+  getProfitAndLossDetail: (ledger: string, lineType: string, periodStart: string, periodEnd: string) =>
+    request<ProfitAndLossLineDetail>(
+      `/reports/profit-loss/tickets?ledger=${ledger}&line_type=${lineType}` +
+        `&period_start=${periodStart}&period_end=${periodEnd}`,
     ),
 
   listSavingsBalances: () => request<SavingsCenterBalance[]>('/service-centers/savings'),
@@ -1001,6 +1024,23 @@ export interface ProfitAndLossReport {
 }
 
 /**
+ * The tickets behind one row of the P&L breakdown — same ledger, same line
+ * type, same period, just not summed away. Reuses the same per-ticket
+ * grouping an invoice or a payout detail view shows.
+ */
+export interface ProfitAndLossLineDetail {
+  period_start: string
+  period_end: string
+  ledger: string
+  ledger_label: string
+  line_type: string
+  line_type_label: string
+  total: Money
+  ticket_count: number
+  tickets: SettlementTicketGroup[]
+}
+
+/**
  * What one technician is owed, split by how far along it is towards being
  * paid — mirrors `CompanyReceivable` on the other side of the ledger.
  */
@@ -1213,6 +1253,9 @@ export interface TicketOptions {
   resolutions: Array<OptionItem & { requires_spare: boolean; is_billable: boolean }>
   /** Why the clock stopped. Only `pauses_sla: true` actually stops it. */
   hold_reasons: Array<OptionItem & { pauses_sla: boolean; requires_company_notice: boolean }>
+  /** Non-rate-card technician costs — bata, a lump sum, an extra service
+   *  charge — editable from Settings without a deploy. */
+  technician_expense_types: OptionItem[]
   warranty_scopes: Array<{ code: string; name: string }>
   priorities: Array<{ code: string; name: string }>
   requirements?: Record<string, unknown>
@@ -1354,6 +1397,8 @@ export interface TicketChargeLine {
   is_adjustment: boolean
   /** The base amount was agreed by hand because the card could not price it. */
   is_manual_base: boolean
+  /** A lump sum, bata, or extra service charge — not on the rate card. */
+  is_technician_expense: boolean
   settlement_status: string
   computed_at: string | null
   snapshot: Record<string, unknown>

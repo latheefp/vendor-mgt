@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import {
   api,
   ApiError,
   type ProfitAndLossReport,
   type ProfitAndLossLine,
+  type ProfitAndLossLineDetail,
   type TechnicianDuesReport,
   type TechnicianDue,
   type Money,
@@ -57,6 +59,7 @@ export function ProfitLossPanel() {
   const [dues, setDues] = useState<TechnicianDuesReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [openLine, setOpenLine] = useState<ProfitAndLossLine | null>(null)
 
   const load = async (p: { start: string; end: string }) => {
     setLoading(true)
@@ -208,8 +211,8 @@ export function ProfitLossPanel() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <LedgerTable title="Income" lines={incomeLines} tone="emerald" total={report.income.total} />
-            <LedgerTable title="Expenses" lines={expenseLines} tone="rose" total={report.expenses.total} />
+            <LedgerTable title="Income" lines={incomeLines} tone="emerald" total={report.income.total} onSelect={setOpenLine} />
+            <LedgerTable title="Expenses" lines={expenseLines} tone="rose" total={report.expenses.total} onSelect={setOpenLine} />
           </div>
 
           {report.ticket_count === 0 && (
@@ -219,6 +222,15 @@ export function ProfitLossPanel() {
             </div>
           )}
         </>
+      )}
+
+      {openLine !== null && (
+        <ProfitAndLossDetailModal
+          line={openLine}
+          periodStart={report?.period_start ?? period.start}
+          periodEnd={report?.period_end ?? period.end}
+          onClose={() => setOpenLine(null)}
+        />
       )}
         </div>
       )}
@@ -478,7 +490,7 @@ function SavingsLedgerModal({
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -571,11 +583,13 @@ function LedgerTable({
   lines,
   tone,
   total,
+  onSelect,
 }: {
   title: string
   lines: ProfitAndLossLine[]
   tone: 'emerald' | 'rose'
   total: Money
+  onSelect: (line: ProfitAndLossLine) => void
 }) {
   const toneClass = tone === 'emerald' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
 
@@ -590,11 +604,16 @@ function LedgerTable({
         <table className="w-full text-left text-sm">
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {lines.map((line) => (
-              <tr key={`${line.ledger}-${line.line_type}`}>
+              <tr
+                key={`${line.ledger}-${line.line_type}`}
+                onClick={() => onSelect(line)}
+                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              >
                 <td className="px-4 py-2.5">
                   <div className="text-slate-900 dark:text-white">{line.line_type_label}</div>
                   <div className="text-[11px] text-slate-500">
-                    {line.ledger_label} · {line.ticket_count} ticket{line.ticket_count === 1 ? '' : 's'}
+                    {line.ledger_label} · {line.ticket_count} ticket{line.ticket_count === 1 ? '' : 's'} · view
+                    tickets
                   </div>
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-700 dark:text-slate-300">
@@ -608,6 +627,105 @@ function LedgerTable({
       <div className="flex items-baseline justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total {title.toLowerCase()}</span>
         <span className={`tabular-nums text-lg font-bold ${toneClass}`}>{total.formatted}</span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Which tickets make up one row of the breakdown — the same drill-down an
+ * invoice or a payout gives from its total down to the frozen lines behind
+ * it, applied to the P&L summary.
+ */
+function ProfitAndLossDetailModal({
+  line,
+  periodStart,
+  periodEnd,
+  onClose,
+}: {
+  line: ProfitAndLossLine
+  periodStart: string
+  periodEnd: string
+  onClose: () => void
+}) {
+  const [detail, setDetail] = useState<ProfitAndLossLineDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setDetail(await api.getProfitAndLossDetail(line.ledger, line.line_type, periodStart, periodEnd))
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'The ticket detail could not be loaded.')
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.ledger, line.line_type, periodStart, periodEnd])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+      <div className="my-8 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-start justify-between border-b border-slate-200 pb-4 dark:border-slate-800">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">{line.line_type_label}</h3>
+            <p className="text-xs text-slate-500">
+              {line.ledger_label} · {periodStart} to {periodEnd} · {detail?.total.formatted ?? line.amount.formatted}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {error !== null && (
+          <div className="my-4 rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
+            {error}
+          </div>
+        )}
+
+        <div className="my-4 max-h-96 space-y-3 overflow-y-auto">
+          {detail === null && error === null ? (
+            <p className="p-6 text-center text-sm text-slate-500">Loading tickets…</p>
+          ) : detail !== null && detail.tickets.length === 0 ? (
+            <p className="p-6 text-center text-sm text-slate-500">No tickets behind this line.</p>
+          ) : (
+            detail?.tickets.map((group) => (
+              <div
+                key={group.ticket_id ?? 'unattributed'}
+                className="rounded-xl border border-slate-200 dark:border-slate-800"
+              >
+                <div className="flex items-baseline justify-between border-b border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-800 dark:bg-slate-800/40">
+                  <span className="text-sm font-semibold text-slate-900 dark:text-white">{group.ticket_no}</span>
+                  <span className="tabular-nums text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {group.subtotal.formatted}
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {group.lines.map((l) => (
+                    <div key={l.id} className="flex items-start justify-between gap-3 px-4 py-2.5 text-xs">
+                      <p className="text-slate-600 dark:text-slate-300">{l.description}</p>
+                      <p className="shrink-0 tabular-nums font-medium text-slate-800 dark:text-slate-200">
+                        {l.amount.formatted}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-200 pt-4 dark:border-slate-800">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   )

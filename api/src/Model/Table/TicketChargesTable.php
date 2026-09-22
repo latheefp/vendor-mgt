@@ -18,6 +18,7 @@ use Cake\Validation\Validator;
  * @property \App\Model\Table\TechnicianRatesTable&\Cake\ORM\Association\BelongsTo $TechnicianRates
  * @property \App\Model\Table\TicketSparesTable&\Cake\ORM\Association\BelongsTo $TicketSpares
  * @property \App\Model\Table\CompanyAgreementsTable&\Cake\ORM\Association\BelongsTo $CompanyAgreements
+ * @property \App\Model\Table\TechnicianExpenseTypesTable&\Cake\ORM\Association\BelongsTo $TechnicianExpenseTypes
  * @property \App\Model\Table\UsersTable&\Cake\ORM\Association\BelongsTo $ComputedByUsers
  * @property \App\Model\Table\TechnicianPayoutLinesTable&\Cake\ORM\Association\HasMany $TechnicianPayoutLines
  * @property \App\Model\Table\CompanyInvoiceLinesTable&\Cake\ORM\Association\HasMany $CompanyInvoiceLines
@@ -77,6 +78,9 @@ class TicketChargesTable extends Table
         ]);
         $this->belongsTo('CompanyAgreements', [
             'foreignKey' => 'company_agreement_id',
+        ]);
+        $this->belongsTo('TechnicianExpenseTypes', [
+            'foreignKey' => 'technician_expense_type_id',
         ]);
         $this->belongsTo('ComputedByUsers', [
             'foreignKey' => 'computed_by_user_id',
@@ -148,6 +152,9 @@ class TicketChargesTable extends Table
             ->allowEmptyString('company_agreement_id');
 
         $validator
+            ->allowEmptyString('technician_expense_type_id');
+
+        $validator
             ->allowEmptyString('calc_snapshot');
 
         $validator
@@ -190,6 +197,10 @@ class TicketChargesTable extends Table
         $rules->add($rules->existsIn(['technician_rate_id'], 'TechnicianRates'), ['errorField' => 'technician_rate_id']);
         $rules->add($rules->existsIn(['ticket_spare_id'], 'TicketSpares'), ['errorField' => 'ticket_spare_id']);
         $rules->add($rules->existsIn(['company_agreement_id'], 'CompanyAgreements'), ['errorField' => 'company_agreement_id']);
+        $rules->add(
+            $rules->existsIn(['technician_expense_type_id'], 'TechnicianExpenseTypes'),
+            ['errorField' => 'technician_expense_type_id'],
+        );
         $rules->add($rules->existsIn(['computed_by_user_id'], 'ComputedByUsers'), ['errorField' => 'computed_by_user_id']);
 
         return $rules;

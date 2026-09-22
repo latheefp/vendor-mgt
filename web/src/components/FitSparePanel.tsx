@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Wrench } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import type { SparePartOption, Ticket } from '../lib/api'
 
@@ -104,9 +105,9 @@ export function FitSparePanel({ ticket, onFitted, onError }: FitSparePanelProps)
     return (
       <button
         onClick={() => setOpen(true)}
-        className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-purple-700"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700"
       >
-        🧩 Fit Spare Part
+        <Wrench className="h-3.5 w-3.5" /> Fit spare part
       </button>
     )
   }

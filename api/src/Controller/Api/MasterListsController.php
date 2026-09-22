@@ -32,6 +32,9 @@ class MasterListsController extends ApiController
         $holdReasons = $this->fetchTable('HoldReasons')->find()->orderBy(['name' => 'ASC'])->all();
         $jobTypes = $this->fetchTable('JobTypes')->find()->orderBy(['sort_order' => 'ASC', 'name' => 'ASC'])->all();
         $serviceCenters = $this->fetchTable('ServiceCenters')->find()->orderBy(['name' => 'ASC'])->all();
+        $technicianExpenseTypes = $this->fetchTable('TechnicianExpenseTypes')->find()
+            ->orderBy(['sort_order' => 'ASC', 'name' => 'ASC'])
+            ->all();
 
         return $this->respond([
             'states' => $states,
@@ -41,6 +44,7 @@ class MasterListsController extends ApiController
             'hold_reasons' => $holdReasons,
             'job_types' => $jobTypes,
             'service_centers' => $serviceCenters,
+            'technician_expense_types' => $technicianExpenseTypes,
         ]);
     }
 
@@ -59,6 +63,7 @@ class MasterListsController extends ApiController
             'hold_reasons' => 'HoldReasons',
             'job_types' => 'JobTypes',
             'service_centers' => 'ServiceCenters',
+            'technician_expense_types' => 'TechnicianExpenseTypes',
         ];
 
         if (!isset($tableMap[$list])) {
@@ -96,6 +101,7 @@ class MasterListsController extends ApiController
             'hold_reasons' => 'HoldReasons',
             'job_types' => 'JobTypes',
             'service_centers' => 'ServiceCenters',
+            'technician_expense_types' => 'TechnicianExpenseTypes',
         ];
 
         if (!isset($tableMap[$list])) {
@@ -139,6 +145,7 @@ class MasterListsController extends ApiController
             'hold_reasons' => 'HoldReasons',
             'job_types' => 'JobTypes',
             'service_centers' => 'ServiceCenters',
+            'technician_expense_types' => 'TechnicianExpenseTypes',
         ];
 
         if (!isset($tableMap[$list])) {

@@ -1,5 +1,20 @@
 import { useState, useEffect } from 'react'
 import {
+  Banknote,
+  CheckCircle2,
+  ClipboardList,
+  ClipboardPaste,
+  CreditCard,
+  Film,
+  Lock,
+  MapPin,
+  Smartphone,
+  Trash2,
+  Upload,
+  Wrench,
+  X,
+} from 'lucide-react'
+import {
   api,
   ApiError,
   type Ticket,
@@ -139,6 +154,11 @@ export function TicketsPanel() {
   const [commentBody, setCommentBody] = useState('')
   const [commentVisibility, setCommentVisibility] = useState<'internal' | 'company' | 'customer'>('internal')
   const [ledger, setLedger] = useState<TicketLedger | null>(null)
+  // Which of the ticket modal's three tabs is showing. The modal used to
+  // stack spares, the lifecycle/close controls and the money section on
+  // top of each other in one long scroll, which is exactly what made a
+  // job with a few BOQ lines and a couple of spares hard to work through.
+  const [ticketModalTab, setTicketModalTab] = useState<'spare' | 'payment' | 'close'>('spare')
   const [boqItems, setBoqItems] = useState<Array<{ id: number; label: string; amount: number }>>([])
   const [selectedBoqItemId, setSelectedBoqItemId] = useState<number | null>(null)
   const [boqLedger, setBoqLedger] = useState('company_receivable')
@@ -149,6 +169,11 @@ export function TicketsPanel() {
   const [photoKind, setPhotoKind] = useState('after')
   const [adjustment, setAdjustment] = useState({
     ledger: 'company_receivable',
+    amount: '',
+    reason: '',
+  })
+  const [technicianExpense, setTechnicianExpense] = useState({
+    technician_expense_type_id: '',
     amount: '',
     reason: '',
   })
@@ -239,6 +264,7 @@ export function TicketsPanel() {
     if (selectedTicket === null) return
     setCloseErrors({})
     setMessage(null)
+    setTicketModalTab('spare')
   }, [selectedTicket?.id])
 
   // BOQ dropdown mirrors whatever the company's active rate card actually
@@ -857,6 +883,37 @@ export function TicketsPanel() {
     }
   }
 
+  /**
+   * A technician cost the rate card never priced — a lump sum, bata, an
+   * extra service charge — bound to this ticket. Only ever runs once the
+   * charges are frozen, same as an adjustment, and always lands on
+   * technician_payable, so there is no ledger to pick.
+   */
+  const handleAddTechnicianExpense = async () => {
+    if (selectedTicket === null || technicianExpense.technician_expense_type_id === '') return
+
+    setSubmitting(true)
+    try {
+      await api.addTicketTechnicianExpense(selectedTicket.id, {
+        technician_expense_type_id: Number(technicianExpense.technician_expense_type_id),
+        amount: technicianExpense.amount,
+        reason: technicianExpense.reason,
+      })
+      setTechnicianExpense({ technician_expense_type_id: '', amount: '', reason: '' })
+      await loadTicketDetail(selectedTicket.id)
+      setMessage({ type: 'success', text: 'Technician expense recorded. It will appear on the next payout run.' })
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err instanceof ApiError
+          ? Object.values(err.fields).flat().join(' ') || err.message
+          : 'The technician expense could not be recorded.',
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     void loadTickets()
@@ -1204,9 +1261,9 @@ export function TicketsPanel() {
                 setPasteText('')
                 setPasteModalOpen(true)
               }}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
-              📋 Paste Ticket
+              <ClipboardPaste className="h-4 w-4" /> Paste Ticket
             </button>
           )}
           <button
@@ -1666,7 +1723,7 @@ export function TicketsPanel() {
                 <option value="">Select Symptom (Optional)</option>
                 {options?.symptoms.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} {s.requires_video_proof ? '📹 (Requires Video Proof)' : ''}
+                    {s.name} {s.requires_video_proof ? '(requires video proof)' : ''}
                   </option>
                 ))}
               </select>
@@ -2219,7 +2276,7 @@ export function TicketsPanel() {
                   onClick={() => setSelectedTicket(null)}
                   className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  ✕
+                  <X className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -2441,7 +2498,71 @@ export function TicketsPanel() {
               </div>
             </div>
 
-            {/* Evidence Capture & Actions Bar */}
+            {/* The modal used to stack spares, lifecycle/close controls and
+                money in one long scroll. Three tabs instead, so each is its
+                own screen rather than a section to hunt for. */}
+            <div className="my-4 flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-800/60">
+              {(
+                [
+                  { key: 'spare', icon: Wrench, label: 'Spare' },
+                  { key: 'payment', icon: CreditCard, label: 'Payment' },
+                  { key: 'close', icon: CheckCircle2, label: 'Close Ticket' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setTicketModalTab(tab.key)}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                    ticketModalTab === tab.key
+                      ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white'
+                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <tab.icon className="h-3.5 w-3.5" /> {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Spare tab: fitting a part and what is already on the set. */}
+            {ticketModalTab === 'spare' && (
+              <div className="my-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Spare Parts
+                </h4>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <FitSparePanel
+                    ticket={selectedTicket}
+                    onFitted={async (text) => {
+                      setMessage({ type: 'success', text })
+                      // The commonest refusal is a resolution that wants a
+                      // spare, and this is the act that answers it.
+                      setCloseErrors({})
+                      setSelectedTicket(await api.getTicket(selectedTicket.id))
+                    }}
+                    onError={(text) => setMessage({ type: 'error', text })}
+                  />
+                </div>
+
+                {/* What is already on the set, standing rather than narrated.
+                    The activity trail says a part was fitted; this says which
+                    parts are on, at whose cost, and what may still come off. */}
+                <FittedSpares
+                  ticket={selectedTicket}
+                  onChanged={(updated, text) => {
+                    setSelectedTicket(updated)
+                    setMessage({ type: 'success', text })
+                    void loadTickets()
+                  }}
+                  onError={(text) => setMessage({ type: 'error', text })}
+                />
+              </div>
+            )}
+
+            {/* Close tab: everything that moves the ticket toward closed —
+                status, SLA hold, check-in/OTP evidence, photos, and the
+                resolve + close action itself. */}
+            {ticketModalTab === 'close' && (
             <div className="my-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                 Lifecycle & Evidence Actions
@@ -2523,9 +2644,9 @@ export function TicketsPanel() {
                     setMessage({ type: 'success', text: 'Geo Check-In recorded (11.2588, 75.7804)' })
                     void loadTickets()
                   }}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
                 >
-                  📍 Geo Check-In
+                  <MapPin className="h-3.5 w-3.5" /> Geo Check-In
                 </button>
 
                 <button
@@ -2538,37 +2659,11 @@ export function TicketsPanel() {
                       setSelectedTicket(updated)
                     }
                   }}
-                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
                 >
-                  📱 Dispatch & Verify Customer OTP
+                  <Smartphone className="h-3.5 w-3.5" /> Dispatch & Verify Customer OTP
                 </button>
-
-                <FitSparePanel
-                  ticket={selectedTicket}
-                  onFitted={async (text) => {
-                    setMessage({ type: 'success', text })
-                    // The commonest refusal is a resolution that wants a
-                    // spare, and this is the act that answers it.
-                    setCloseErrors({})
-                    setSelectedTicket(await api.getTicket(selectedTicket.id))
-                  }}
-                  onError={(text) => setMessage({ type: 'error', text })}
-                />
-
               </div>
-
-              {/* What is already on the set, standing rather than narrated.
-                  The activity trail says a part was fitted; this says which
-                  parts are on, at whose cost, and what may still come off. */}
-              <FittedSpares
-                ticket={selectedTicket}
-                onChanged={(updated, text) => {
-                  setSelectedTicket(updated)
-                  setMessage({ type: 'success', text })
-                  void loadTickets()
-                }}
-                onError={(text) => setMessage({ type: 'error', text })}
-              />
 
               {/* Photographs. Not a condition of closing unless the company
                   turns that on in Settings, but they are what settles a
@@ -2589,8 +2684,8 @@ export function TicketsPanel() {
                   <option value="video">Video</option>
                   <option value="other">Other</option>
                 </select>
-                <label className="cursor-pointer rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-teal-700">
-                  📷 Upload
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700">
+                  <Upload className="h-3.5 w-3.5" /> Upload
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/heic,video/mp4"
@@ -2617,8 +2712,8 @@ export function TicketsPanel() {
                     {file.mime_type?.startsWith('image/') ? (
                       <img src={file.url} alt={file.kind} className="h-full w-full object-cover" />
                     ) : (
-                      <span className="flex h-full w-full items-center justify-center bg-slate-100 text-base dark:bg-slate-800">
-                        🎬
+                      <span className="flex h-full w-full items-center justify-center bg-slate-100 dark:bg-slate-800">
+                        <Film className="h-4 w-4 text-slate-400" />
                       </span>
                     )}
                   </a>
@@ -2659,9 +2754,9 @@ export function TicketsPanel() {
                   <button
                     onClick={() => void handleClose()}
                     disabled={submitting || resolutionId === ''}
-                    className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-black disabled:opacity-50 dark:bg-slate-700 dark:hover:bg-slate-600"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-black disabled:opacity-50 dark:bg-slate-700 dark:hover:bg-slate-600"
                   >
-                    ✓ Close Ticket & Freeze Charges
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Close Ticket & Freeze Charges
                   </button>
 
                   {/* Every reason the server gave, next to the control that
@@ -2671,18 +2766,20 @@ export function TicketsPanel() {
                   {Object.keys(closeErrors).length > 0 && (
                     <ul className="w-full space-y-1 rounded-lg bg-rose-50 px-3 py-2 text-[11px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
                       {Object.entries(closeErrors).flatMap(([field, messages]) =>
-                        messages.map((text, index) => <li key={`${field}-${index}`}>• {text}</li>),
+                        messages.map((text, index) => <li key={`${field}-${index}`}>• {text}</li>)
                       )}
                     </ul>
                   )}
                 </div>
               )}
             </div>
+            )}
 
-            {/* Ticket Charges & BOQ Services. Keyed on the ledger, not on the
-                ticket: it arrives from its own request a moment later, and is
-                left null when that request fails. */}
-            {ledger !== null && (
+            {/* Payment tab: charges, BOQ, adjustments and technician
+                expenses. Keyed on the ledger, not on the ticket: it arrives
+                from its own request a moment later, and is left null when
+                that request fails. */}
+            {ticketModalTab === 'payment' && ledger !== null && (
               <div className="my-4 rounded-xl border border-amber-100 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
                 <div className="mb-2 flex items-center justify-between">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-200">
@@ -2699,8 +2796,8 @@ export function TicketsPanel() {
                     closed" on a job the desk could see was in progress. */}
                 {ledger.freeze !== null && (
                   <div className="mb-3 rounded-lg border border-slate-300 bg-white/70 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900/60">
-                    <p className="font-semibold text-slate-800 dark:text-slate-200">
-                      🔒 Charges frozen · {new Date(ledger.freeze.frozen_at).toLocaleString()}
+                    <p className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
+                      <Lock className="h-3.5 w-3.5" /> Charges frozen · {new Date(ledger.freeze.frozen_at).toLocaleString()}
                     </p>
                     {ledger.freeze.reason !== null && (
                       <p className="mt-0.5 text-slate-600 dark:text-slate-400">{ledger.freeze.reason}</p>
@@ -2727,6 +2824,11 @@ export function TicketsPanel() {
                             manual rate
                           </span>
                         )}
+                        {line.is_technician_expense && (
+                          <span className="ml-1.5 rounded bg-emerald-200 px-1 text-[10px] font-semibold text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100">
+                            technician expense
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="tabular-nums font-medium text-slate-900 dark:text-white">
@@ -2747,9 +2849,9 @@ export function TicketsPanel() {
                             }
                           }}
                           title="Remove charge line"
-                          className="rounded px-1.5 py-0.5 text-xs text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-950/50"
                         >
-                          🗑️ Remove
+                          <Trash2 className="h-3 w-3" /> Remove
                         </button>
                       </div>
                     </div>
@@ -2764,10 +2866,11 @@ export function TicketsPanel() {
                     bill already sent are not the same event. */}
                 <div className="border-t border-amber-200 pt-3 dark:border-amber-900/50">
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <p className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <ClipboardList className="h-3.5 w-3.5" />
                       {ledger.freeze !== null
-                        ? '📋 Adjust Frozen Charges'
-                        : '📋 Add Services & Rate Card Items (BOQ)'}
+                        ? 'Adjust Frozen Charges'
+                        : 'Add Services & Rate Card Items (BOQ)'}
                     </p>
                     <span className="text-[11px] text-slate-500">
                       {ledger.freeze !== null
@@ -2849,6 +2952,69 @@ export function TicketsPanel() {
                     </div>
                   )}
                 </div>
+
+                {/* Technician expenses: a lump sum, bata, or an extra service
+                    charge the rate card never priced. Only once frozen, same
+                    as an adjustment, and always payable to the technician —
+                    there is nothing to offset it, so it comes straight out
+                    of margin, same as paying it by hand out of the till. */}
+                {ledger.freeze !== null && (
+                  <div className="mt-3 border-t border-amber-200 pt-3 dark:border-amber-900/50">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <Banknote className="h-3.5 w-3.5" /> Pay Technician (Lump Sum / Bata / Service Charge)
+                      </p>
+                      <span className="text-[11px] text-slate-500">
+                        Not on the rate card — paid out of margin
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={technicianExpense.technician_expense_type_id}
+                        disabled={(options?.technician_expense_types?.length ?? 0) === 0}
+                        onChange={(e) =>
+                          setTechnicianExpense({ ...technicianExpense, technician_expense_type_id: e.target.value })
+                        }
+                        className="min-w-48 rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      >
+                        <option value="">
+                          {(options?.technician_expense_types?.length ?? 0) === 0
+                            ? 'No expense types configured'
+                            : 'Select expense type…'}
+                        </option>
+                        {options?.technician_expense_types?.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={technicianExpense.amount}
+                        onChange={(e) => setTechnicianExpense({ ...technicianExpense, amount: e.target.value })}
+                        placeholder="200.00"
+                        className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-xs tabular-nums dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+                      <input
+                        value={technicianExpense.reason}
+                        onChange={(e) => setTechnicianExpense({ ...technicianExpense, reason: e.target.value })}
+                        placeholder="Why this is being paid"
+                        className="min-w-40 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+                      <button
+                        onClick={() => void handleAddTechnicianExpense()}
+                        disabled={
+                          submitting
+                          || technicianExpense.technician_expense_type_id === ''
+                          || technicianExpense.amount.trim() === ''
+                          || technicianExpense.reason.trim() === ''
+                        }
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        + Pay Technician
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

@@ -1,4 +1,28 @@
-import { useState } from 'react'
+import { useState, type ComponentType } from 'react'
+import {
+  Banknote,
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  Globe,
+  LayoutDashboard,
+  ListTree,
+  Lock,
+  LogOut,
+  Menu,
+  Package,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Receipt,
+  Settings,
+  Tag,
+  Ticket,
+  TrendingUp,
+  Users,
+  Wrench,
+  X,
+} from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { AppFooter } from '../components/AppFooter'
 import { DashboardPanel } from './DashboardPanel'
@@ -28,6 +52,45 @@ type SettingsTab =
   | 'master-lists'
   | 'configurations'
 
+/**
+ * One sidebar row. The active state reads as a marked-off entry in a job
+ * list — a left rail plus a lightly tinted row — rather than a filled
+ * pill, so a long, dense nav doesn't turn into a strip of buttons.
+ */
+function NavItem({
+  icon: Icon,
+  label,
+  active,
+  collapsed,
+  onClick,
+}: {
+  icon: ComponentType<{ className?: string }>
+  label: string
+  active: boolean
+  collapsed: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={collapsed ? label : undefined}
+      className={`flex w-full items-center gap-3 border-l-2 py-2.5 pl-[10px] pr-3 text-sm font-medium transition-colors ${
+        active
+          ? 'border-brand-400 bg-white/[0.06] text-white'
+          : 'border-transparent text-ink-400 hover:bg-white/[0.04] hover:text-white'
+      }`}
+    >
+      <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-brand-400' : ''}`} />
+      {!collapsed && <span className="truncate">{label}</span>}
+    </button>
+  )
+}
+
+function NavGroupLabel({ children, collapsed }: { children: string; collapsed: boolean }) {
+  if (collapsed) return null
+  return <div className="mb-2 px-3 text-[11px] font-semibold text-ink-600">{children}</div>
+}
+
 export function DeskShell({ logo }: { logo?: string | null }) {
   const { user, logout } = useAuth()
   const [section, setSection] = useState<Section>('dashboard')
@@ -44,6 +107,16 @@ export function DeskShell({ logo }: { logo?: string | null }) {
     setMobileNavOpen(false)
   }
 
+  const settingsItems: { tab: SettingsTab; icon: ComponentType<{ className?: string }>; label: string }[] = [
+    { tab: 'users', icon: Users, label: 'Users & Accounts' },
+    { tab: 'technicians', icon: Wrench, label: 'Technicians' },
+    { tab: 'roles', icon: Lock, label: 'Groups & Permissions' },
+    { tab: 'rate-cards', icon: ClipboardList, label: 'Rate Cards & SLA' },
+    { tab: 'products', icon: Building2, label: 'Companies & Products' },
+    { tab: 'master-lists', icon: ListTree, label: 'Master Lists' },
+    { tab: 'configurations', icon: Globe, label: 'Configurations' },
+  ]
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
       {/* Backdrop for the mobile nav drawer */}
@@ -57,21 +130,21 @@ export function DeskShell({ logo }: { logo?: string | null }) {
       {/* LEFT SIDEBAR NAVIGATION
           Off-canvas drawer below md; a normal collapsible column at md+. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col border-r border-slate-200 bg-slate-900 text-slate-300 transition-transform duration-300 dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:translate-x-0 md:transition-all ${
+        className={`fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-ink-950 text-ink-400 transition-transform duration-300 md:static md:z-auto md:translate-x-0 md:transition-all ${
           mobileNavOpen ? 'translate-x-0' : ''
-        } ${sidebarCollapsed ? 'md:w-20' : 'md:w-64'}`}
+        } ${sidebarCollapsed ? 'md:w-[72px]' : 'md:w-64'}`}
       >
         {/* Sidebar Header / Brand Logo */}
-        <div className="flex h-16 items-center justify-between border-b border-slate-800 px-4">
+        <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
           <div className="flex items-center gap-3 overflow-hidden">
             {logo ? (
               <img
                 src={logo}
                 alt="Portal logo"
-                className="h-9 w-9 shrink-0 rounded-xl object-contain shadow-md"
+                className="h-9 w-9 shrink-0 rounded-lg object-contain"
               />
             ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 font-bold text-white shadow-md">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 font-bold text-white">
                 G
               </div>
             )}
@@ -83,148 +156,89 @@ export function DeskShell({ logo }: { logo?: string | null }) {
           </div>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white md:flex"
-            title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-400 hover:bg-white/10 hover:text-white md:flex"
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {sidebarCollapsed ? '▶' : '◀'}
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
           <button
             onClick={() => setMobileNavOpen(false)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white md:hidden"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 hover:bg-white/10 hover:text-white md:hidden"
             title="Close menu"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Sidebar Navigation Items */}
-        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
-          {/* Main Dashboard Section */}
+        <nav className="flex-1 space-y-6 overflow-y-auto py-4">
           <div>
-            {!sidebarCollapsed && (
-              <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Main
-              </div>
-            )}
-            <button
+            <NavGroupLabel collapsed={sidebarCollapsed}>Main</NavGroupLabel>
+            <NavItem
+              icon={LayoutDashboard}
+              label="Executive Dashboard"
+              active={section === 'dashboard'}
+              collapsed={sidebarCollapsed}
               onClick={() => handleNavigate('dashboard')}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                section === 'dashboard'
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
-              }`}
-              title="Overview Dashboard"
-            >
-              <span className="text-base">📊</span>
-              {!sidebarCollapsed && <span>Executive Dashboard</span>}
-            </button>
+            />
           </div>
 
-          {/* Operations Section */}
           <div>
-            {!sidebarCollapsed && (
-              <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Operations
-              </div>
-            )}
-            <div className="space-y-1">
-              <button
+            <NavGroupLabel collapsed={sidebarCollapsed}>Operations</NavGroupLabel>
+            <div className="space-y-0.5">
+              <NavItem
+                icon={Ticket}
+                label="Tickets & Intake"
+                active={section === 'tickets'}
+                collapsed={sidebarCollapsed}
                 onClick={() => handleNavigate('tickets')}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  section === 'tickets'
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
-                }`}
-                title="Tickets & Intake"
-              >
-                <span className="text-base">🎫</span>
-                {!sidebarCollapsed && <span>Tickets & Intake</span>}
-              </button>
-
-              <button
+              />
+              <NavItem
+                icon={Package}
+                label="Spare Stock"
+                active={section === 'spares'}
+                collapsed={sidebarCollapsed}
                 onClick={() => handleNavigate('spares')}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  section === 'spares'
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
-                }`}
-                title="Spare Stock Ledger"
-              >
-                <span className="text-base">📦</span>
-                {!sidebarCollapsed && <span>Spare Stock</span>}
-              </button>
+              />
             </div>
           </div>
 
-          {/* Financials Section */}
           <div>
-            {!sidebarCollapsed && (
-              <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Financials
-              </div>
-            )}
-            <div className="space-y-1">
-              <button
+            <NavGroupLabel collapsed={sidebarCollapsed}>Financials</NavGroupLabel>
+            <div className="space-y-0.5">
+              <NavItem
+                icon={Receipt}
+                label="Invoicing & Payouts"
+                active={section === 'invoicing'}
+                collapsed={sidebarCollapsed}
                 onClick={() => handleNavigate('invoicing')}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  section === 'invoicing'
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
-                }`}
-                title="Invoicing & Payouts"
-              >
-                <span className="text-base">💰</span>
-                {!sidebarCollapsed && <span>Invoicing & Payouts</span>}
-              </button>
-
-              <button
+              />
+              <NavItem
+                icon={Banknote}
+                label="Receivables"
+                active={section === 'receivables'}
+                collapsed={sidebarCollapsed}
                 onClick={() => handleNavigate('receivables')}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  section === 'receivables'
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
-                }`}
-                title="What each company owes and what has been received"
-              >
-                <span className="text-base">📥</span>
-                {!sidebarCollapsed && <span>Receivables</span>}
-              </button>
-
-              <button
+              />
+              <NavItem
+                icon={TrendingUp}
+                label="Profit & Loss"
+                active={section === 'profit-loss'}
+                collapsed={sidebarCollapsed}
                 onClick={() => handleNavigate('profit-loss')}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  section === 'profit-loss'
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
-                }`}
-                title="Income, expenses and what was kept"
-              >
-                <span className="text-base">📈</span>
-                {!sidebarCollapsed && <span>Profit &amp; Loss</span>}
-              </button>
-
-              <button
+              />
+              <NavItem
+                icon={Tag}
+                label="Rate Preview"
+                active={section === 'pricing'}
+                collapsed={sidebarCollapsed}
                 onClick={() => handleNavigate('pricing')}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  section === 'pricing'
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
-                }`}
-                title="Rate Preview Engine"
-              >
-                <span className="text-base">🏷️</span>
-                {!sidebarCollapsed && <span>Rate Preview</span>}
-              </button>
+              />
             </div>
           </div>
 
-          {/* Administration & System Settings with Submenus */}
           <div>
-            {!sidebarCollapsed && (
-              <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Administration
-              </div>
-            )}
+            <NavGroupLabel collapsed={sidebarCollapsed}>Administration</NavGroupLabel>
             <button
               onClick={() => {
                 setSection('settings')
@@ -232,123 +246,57 @@ export function DeskShell({ logo }: { logo?: string | null }) {
                   setSettingsSubmenuOpen(!settingsSubmenuOpen)
                 }
               }}
-              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              title={sidebarCollapsed ? 'System Settings' : undefined}
+              className={`flex w-full items-center justify-between border-l-2 py-2.5 pl-[10px] pr-3 text-sm font-medium transition-colors ${
                 section === 'settings'
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
+                  ? 'border-brand-400 bg-white/[0.06] text-white'
+                  : 'border-transparent text-ink-400 hover:bg-white/[0.04] hover:text-white'
               }`}
-              title="System Settings"
             >
               <div className="flex items-center gap-3">
-                <span className="text-base">⚙️</span>
+                <Settings className={`h-[18px] w-[18px] shrink-0 ${section === 'settings' ? 'text-brand-400' : ''}`} />
                 {!sidebarCollapsed && <span>System Settings</span>}
               </div>
-              {!sidebarCollapsed && (
-                <span className="text-xs text-slate-400">{settingsSubmenuOpen ? '▼' : '▶'}</span>
-              )}
+              {!sidebarCollapsed &&
+                (settingsSubmenuOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-ink-600" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-ink-600" />
+                ))}
             </button>
 
             {/* Submenus for Settings */}
             {!sidebarCollapsed && settingsSubmenuOpen && (
-              <div className="ml-4 mt-1.5 border-l border-slate-800 pl-3 space-y-1">
-                <button
-                  onClick={() => handleNavigate('settings', 'users')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'users'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">👤</span>
-                  <span>Users & Accounts</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavigate('settings', 'technicians')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'technicians'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">🛠️</span>
-                  <span>Technicians</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavigate('settings', 'roles')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'roles'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">🔐</span>
-                  <span>Groups & Permissions</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavigate('settings', 'rate-cards')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'rate-cards'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">📋</span>
-                  <span>Rate Cards & SLA</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavigate('settings', 'products')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'products'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">🖥️</span>
-                  <span>Companies & Products</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavigate('settings', 'master-lists')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'master-lists'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">🗂️</span>
-                  <span>Master Lists</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavigate('settings', 'configurations')}
-                  className={`flex w-full items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    section === 'settings' && settingsTab === 'configurations'
-                      ? 'bg-slate-800 text-brand-400 font-semibold'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-sm">🌐</span>
-                  <span>Configurations</span>
-                </button>
+              <div className="ml-[21px] mt-1 space-y-0.5 border-l border-white/10 pl-3">
+                {settingsItems.map(({ tab, icon: Icon, label }) => (
+                  <button
+                    key={tab}
+                    onClick={() => handleNavigate('settings', tab)}
+                    className={`flex w-full items-center gap-2.5 rounded-md py-1.5 pl-2 pr-2.5 text-left text-xs font-medium transition-colors ${
+                      section === 'settings' && settingsTab === tab
+                        ? 'bg-white/[0.06] text-brand-400'
+                        : 'text-ink-400 hover:bg-white/[0.04] hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{label}</span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
         </nav>
 
         {/* Sidebar Footer / User Profile */}
-        <div className="border-t border-slate-800 p-3">
+        <div className="border-t border-white/10 p-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 font-semibold text-slate-200">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 font-semibold text-white">
               {user?.name ? user.name[0].toUpperCase() : 'U'}
             </div>
             {!sidebarCollapsed && (
               <div className="flex-1 overflow-hidden">
                 <div className="truncate text-xs font-semibold text-white">{user?.name}</div>
-                <div className="truncate text-[10px] text-slate-400">
+                <div className="truncate text-[10px] text-ink-500">
                   {user?.role?.name}
                   {user?.service_center && ` · ${user.service_center.name}`}
                 </div>
@@ -357,10 +305,10 @@ export function DeskShell({ logo }: { logo?: string | null }) {
             {!sidebarCollapsed && (
               <button
                 onClick={() => void logout()}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-rose-400"
+                className="rounded-md p-1.5 text-ink-500 hover:bg-white/10 hover:text-rose-400"
                 title="Sign out"
               >
-                🚪
+                <LogOut className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -377,9 +325,9 @@ export function DeskShell({ logo }: { logo?: string | null }) {
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 md:hidden"
               title="Open menu"
             >
-              ☰
+              <Menu className="h-5 w-5" />
             </button>
-            <span className="hidden shrink-0 text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400 sm:inline">
+            <span className="hidden shrink-0 text-xs font-semibold text-brand-600 dark:text-brand-400 sm:inline">
               Grand VendorService
             </span>
             <span className="hidden text-slate-300 dark:text-slate-700 sm:inline">/</span>

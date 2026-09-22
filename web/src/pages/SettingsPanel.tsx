@@ -1,4 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
+import {
+  Camera,
+  CalendarDays,
+  Hash,
+  IndianRupee,
+  KeyRound,
+  MapPin,
+  Pencil,
+  PenLine,
+  Trash2,
+  Video,
+  Wrench,
+} from 'lucide-react'
 import { api } from '../lib/api'
 import type {
   UserItem,
@@ -1392,15 +1405,15 @@ function CompaniesTab() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => openEditModal(selectedCompany)}
-                  className="rounded-lg border border-brand-500 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                 >
-                  ✏️ Edit
+                  <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
                 <button
                   onClick={() => void handleDeleteCompany(selectedCompany)}
-                  className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
                 >
-                  🗑️ Delete
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
                 </button>
                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                   Active Agreement
@@ -1446,12 +1459,12 @@ function CompaniesTab() {
                   </h4>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {[
-                      { key: 'closure.require_photo', label: '📷 Mandatory Photo at Closure', desc: 'Technician must attach job photo before closing ticket.' },
-                      { key: 'closure.require_customer_signature', label: '✍️ Mandatory Customer Signature', desc: 'Customer must sign on technician screen before closure.' },
-                      { key: 'closure.require_customer_otp', label: '🔑 Mandatory Customer OTP Code', desc: 'Customer must confirm job via SMS OTP code at closure.' },
-                      { key: 'ticket.require_serial_no', label: '🔢 Mandatory Unit Serial Number', desc: 'Intake form enforces unit serial number.' },
-                      { key: 'ticket.require_bill_date', label: '📅 Mandatory Purchase / Bill Date', desc: 'Intake form enforces purchase date.' },
-                      { key: 'assignment.enforce_technician_rules', label: '🛠️ Enforce Technician Assignment Rules', desc: 'Block assigning a technician outside their skills or over their open-job limit. Turn off to allow any technician to be assigned freely.' },
+                      { key: 'closure.require_photo', icon: Camera, label: 'Mandatory Photo at Closure', desc: 'Technician must attach job photo before closing ticket.' },
+                      { key: 'closure.require_customer_signature', icon: PenLine, label: 'Mandatory Customer Signature', desc: 'Customer must sign on technician screen before closure.' },
+                      { key: 'closure.require_customer_otp', icon: KeyRound, label: 'Mandatory Customer OTP Code', desc: 'Customer must confirm job via SMS OTP code at closure.' },
+                      { key: 'ticket.require_serial_no', icon: Hash, label: 'Mandatory Unit Serial Number', desc: 'Intake form enforces unit serial number.' },
+                      { key: 'ticket.require_bill_date', icon: CalendarDays, label: 'Mandatory Purchase / Bill Date', desc: 'Intake form enforces purchase date.' },
+                      { key: 'assignment.enforce_technician_rules', icon: Wrench, label: 'Enforce Technician Assignment Rules', desc: 'Block assigning a technician outside their skills or over their open-job limit. Turn off to allow any technician to be assigned freely.' },
                     ].map((setting) => {
                       const settingsMap = (companyDetails.settings as Record<string, any>) || {}
                       const currentVal = Boolean(settingsMap[setting.key]?.value ?? settingsMap[setting.key] ?? false)
@@ -1465,7 +1478,10 @@ function CompaniesTab() {
                           }`}
                         >
                           <div>
-                            <div className="text-xs font-bold text-slate-900 dark:text-white">{setting.label}</div>
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                              <setting.icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                              {setting.label}
+                            </div>
                             <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{setting.desc}</div>
                           </div>
                           <input
@@ -1488,8 +1504,8 @@ function CompaniesTab() {
                   </div>
 
                   <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      💰 Default Basic Service Charge (₹)
+                    <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <IndianRupee className="h-3.5 w-3.5 text-slate-400" /> Default Basic Service Charge
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2">
                       Basic closure charge automatically billed for any case under this company (e.g. ₹400 for Dianora).
@@ -1525,8 +1541,8 @@ function CompaniesTab() {
                   </div>
 
                   <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      📍 Default Intake District & Service Center
+                    <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400" /> Default Intake District & Service Center
                     </label>
                     <p className="text-[11px] text-slate-500 mb-2">
                       Pre-selected on a new ticket for this company until the desk changes it.
@@ -2685,7 +2701,6 @@ function RateCardsTab() {
                   >
                     <option value="company">Company</option>
                     <option value="customer">Customer</option>
-                    <option value="none">None</option>
                   </select>
                 </div>
               </div>
@@ -2833,7 +2848,6 @@ function RateCardsTab() {
                   >
                     <option value="company">Company</option>
                     <option value="customer">Customer</option>
-                    <option value="none">None</option>
                   </select>
                 </div>
               </div>
@@ -3815,7 +3829,13 @@ function MasterListsTab() {
   const [listsData, setListsData] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
   const [selectedList, setSelectedList] = useState<
-    'districts' | 'symptoms' | 'resolutions' | 'hold_reasons' | 'job_types' | 'service_centers'
+    | 'districts'
+    | 'symptoms'
+    | 'resolutions'
+    | 'hold_reasons'
+    | 'job_types'
+    | 'service_centers'
+    | 'technician_expense_types'
   >('districts')
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -3875,6 +3895,7 @@ function MasterListsTab() {
           { key: 'hold_reasons', label: 'Hold Reasons' },
           { key: 'job_types', label: 'Job Types' },
           { key: 'service_centers', label: 'Service Centers' },
+          { key: 'technician_expense_types', label: 'Technician Expense Types' },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -3973,7 +3994,15 @@ function MasterListsTab() {
                                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
                             }`}
                           >
-                            {item.requires_video_proof ? '📹 Video Proof Mandatory' : '📷 Optional Video'}
+                            {item.requires_video_proof ? (
+                              <>
+                                <Video className="h-3 w-3" /> Video Proof Mandatory
+                              </>
+                            ) : (
+                              <>
+                                <Camera className="h-3 w-3" /> Optional Video
+                              </>
+                            )}
                           </button>
                         </td>
                       )}
@@ -4036,8 +4065,8 @@ function MasterListsTab() {
                     onChange={(e) => setRequiresVideoProof(e.target.checked)}
                     className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                   />
-                  <label htmlFor="sym-video" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
-                    📹 Require Video Proof for this symptom
+                  <label htmlFor="sym-video" className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <Video className="h-3.5 w-3.5 text-slate-400" /> Require Video Proof for this symptom
                   </label>
                 </div>
               )}

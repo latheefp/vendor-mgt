@@ -96,6 +96,36 @@ class SettlementControllerTest extends TestCase
         $this->assertResponseContains('"breakdown"');
     }
 
+    /**
+     * The tickets behind one row of the breakdown above — same shape even
+     * with nothing closed in the period, since the summary row it drills
+     * from would not exist either otherwise.
+     */
+    public function testProfitAndLossDetailReturnsTicketGroups(): void
+    {
+        $this->get(
+            '/api/reports/profit-loss/tickets?ledger=company_receivable&line_type=base'
+            . '&period_start=2000-01-01&period_end=2000-01-31',
+        );
+
+        $this->assertResponseOk();
+        $this->assertResponseContains('"ledger"');
+        $this->assertResponseContains('"line_type"');
+        $this->assertResponseContains('"total"');
+        $this->assertResponseContains('"tickets"');
+    }
+
+    public function testProfitAndLossDetailRejectsUnknownLedgerOrLineType(): void
+    {
+        $this->get(
+            '/api/reports/profit-loss/tickets?ledger=not_a_ledger&line_type=not_a_type'
+            . '&period_start=2000-01-01&period_end=2000-01-31',
+        );
+
+        $this->assertResponseCode(422);
+        $this->assertResponseContains('validation_error');
+    }
+
     public function testTechnicianDuesRouteExists(): void
     {
         $this->get('/api/technician-dues');

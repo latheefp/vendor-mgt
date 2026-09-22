@@ -102,7 +102,8 @@ class RateCardItemsTable extends Table
         $validator
             ->scalar('payer')
             ->maxLength('payer', 16)
-            ->notEmptyString('payer');
+            ->notEmptyString('payer')
+            ->inList('payer', ['company', 'customer']);
 
         $validator
             ->scalar('label')
